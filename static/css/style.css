@@ -742,3 +742,6 @@ table th:last-child, table td:last-child {
   background: #FFF5F5;
 }
 .branch-checkbox-grid-invalid { border: 1px solid #E4483A; }
+.branch-dropdown-divider { height:1px; background:var(--grey-100); margin:4px 6px; }
+.branch-dropdown-option-selectall { font-weight:700; }
+.branch-dropdown-option input[type="checkbox"] { width:16px; height:16px; margin:0; flex-shrink:0; accent-color:var(--electric-blue); }

@@ -24,7 +24,6 @@
     <div style="display:flex; align-items:center; gap:14px; flex-shrink:0;">
       {% if r.status == 'APPROVED' %}<span class="badge badge-success">Approved</span>
       {% elif r.status == 'REJECTED' %}<span class="badge badge-danger">Rejected</span>
-      {% elif r.status == 'HR_REJECTED_PENDING_MANAGER' %}<span class="badge badge-danger">HR Rejected — Awaiting Manager</span>
       {% elif r.status == 'PENDING_HR' %}<span class="badge badge-warning">Pending HR</span>
       {% else %}<span class="badge badge-warning">Pending Manager</span>{% endif %}
       <span class="history-toggle-arrow" id="arrow-req-{{ r.id }}">&#9656;</span>
@@ -57,7 +56,6 @@
       {% if user.is_manager and r.status == 'PENDING_MANAGER' or user.role == 'HR' and r.status == 'PENDING_HR' %}
       <a href="{% url 'leaves:review_leave' r.id 'reject' %}" class="btn btn-outline btn-sm">Reject</a>
       <a href="{% url 'leaves:review_leave' r.id 'approve' %}" class="btn btn-primary btn-sm">Approve</a>
-      {% elif user.role == 'ADMIN' %}
       {% endif %}
     </div>
   </div>
@@ -65,66 +63,38 @@
 {% empty %}
 <div class="card"><p class="empty-state">No leave requests.</p></div>
 {% endfor %}
-{% if stale_manager_requests %}
-<div class="card" style="border-left:4px solid var(--sunset-orange); background:#FFF7F2; margin-top:20px;">
-  <h3>Stuck Requests — No Manager Action Possible</h3>
-  <p style="color:var(--grey-700); font-size:0.85rem; margin-top:0;">
-    These were submitted while there was no manager to review them, and their date has already passed.
-    Review them here directly.
-  </p>
-  {% for r in stale_manager_requests %}
-  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:12px 0; {% if not forloop.last %}border-bottom:1px solid var(--grey-100);{% endif %}">
-    <div>
-      <p style="margin:0; font-weight:600;">{{ r.user.get_full_name|default:r.user.username }}</p>
-      <p style="margin:2px 0 0; color:var(--grey-500); font-size:0.82rem;">
-        {{ r.get_request_type_display }}{% if r.request_type == 'LEAVE' %} &middot; {{ r.get_leave_type_display }}{% endif %} &middot;
-        {% if r.request_type == 'PERMISSION' %}{{ r.permission_date }}{% else %}{{ r.start_date }} - {{ r.end_date }}{% endif %}
-      </p>
-      <p style="margin:4px 0 0; font-size:0.85rem;">{{ r.reason|default:"-"|truncatewords:12 }}</p>
-    </div>
-    <div style="display:flex; gap:8px;">
-      <a href="{% url 'leaves:review_leave' r.id 'reject' %}" class="btn btn-outline btn-sm">Reject</a>
-      <a href="{% url 'leaves:review_leave' r.id 'approve' %}" class="btn btn-primary btn-sm">Approve</a>
-    </div>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
 
-{% if hr_rejected_pending %}
-<div class="card" style="border-left:4px solid #E4483A; background:#FFF7F2; margin-top:20px;">
-  <h3>HR Sent These Back — Finalize the Rejection</h3>
-  {% for r in hr_rejected_pending %}
-  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:12px 0; {% if not forloop.last %}border-bottom:1px solid var(--grey-100);{% endif %}">
-    <div>
-      <p style="margin:0; font-weight:600;">{{ r.user.get_full_name|default:r.user.username }}</p>
-      <p style="margin:2px 0 0; color:var(--grey-500); font-size:0.82rem;">
-        {{ r.get_request_type_display }}{% if r.request_type == 'LEAVE' %} &middot; {{ r.get_leave_type_display }}{% endif %} &middot;
-        {% if r.request_type == 'PERMISSION' %}{{ r.permission_date }}{% else %}{{ r.start_date|date:"M d, Y" }} &ndash; {{ r.end_date|date:"M d, Y" }}{% endif %}
-      </p>
-      <p style="margin:4px 0 0; font-size:0.85rem;">{{ r.reason|default:"-"|truncatewords:12 }}</p>
-    </div>
-    <a href="{% url 'leaves:review_leave' r.id 'reject' %}" class="btn btn-danger btn-sm">Finalize Rejection</a>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-
-{% if manager_approved_notices is not None %}
+{% if on_leave_today is not None %}
 <div class="card" style="margin-top:20px;">
-  <h3>Employees on Approved Leave <span class="badge badge-info" style="font-weight:500;">Informational</span></h3>
-  {% for r in manager_approved_notices %}
-  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:10px 0; {% if not forloop.last %}border-bottom:1px solid var(--grey-100);{% endif %}">
-    <div>
-      <p style="margin:0; font-weight:600;">{{ r.user.get_full_name|default:r.user.username }}</p>
-      <p style="margin:2px 0 0; color:var(--grey-500); font-size:0.82rem;">
-        {{ r.get_request_type_display }}{% if r.request_type == 'LEAVE' %} &middot; {{ r.get_leave_type_display }}{% endif %} &middot;
-        {% if r.request_type == 'PERMISSION' %}{{ r.permission_date }}{% else %}{{ r.start_date }} - {{ r.end_date }}{% endif %}
-      </p>
-    </div>
-    <p style="margin:0; color:var(--grey-500); font-size:0.8rem;">Approved by {{ r.reviewed_by_manager|default:"-" }}{% if r.manager_reviewed_at %}, {{ r.manager_reviewed_at|date:"d M Y" }}{% endif %}</p>
-  </div>
-  {% empty %}<p class="empty-state">No recent manager-approved leaves.</p>{% endfor %}
+  <h3>Employees on Leave Today</h3>
+  <table>
+    <tr>
+      <th>Employee Name</th><th>Employee ID</th><th>Department</th>
+      <th>Leave Date(s)</th><th>Leave Type</th><th>Status</th>
+      <th>Approved By</th><th></th>
+    </tr>
+    {% for r in on_leave_today %}
+    <tr>
+      <td>{{ r.user.get_full_name|default:r.user.username }}</td>
+      <td>{{ r.user.employee_id|default:"-" }}</td>
+      <td>{{ r.user.department|default:"-" }}</td>
+      <td>
+        {% if r.request_type == 'PERMISSION' %}
+          {{ r.permission_date|date:"M d, Y" }} ({{ r.from_time|time:"h:i A" }}&ndash;{{ r.to_time|time:"h:i A" }})
+        {% else %}
+          {{ r.start_date|date:"M d, Y" }} &ndash; {{ r.end_date|date:"M d, Y" }}
+        {% endif %}
+      </td>
+      <td>{{ r.get_request_type_display }}{% if r.request_type == 'LEAVE' %} &middot; {{ r.get_leave_type_display }}{% endif %}</td>
+      <td><span class="badge badge-success">Approved</span></td>
+      <td>{% if r.reviewed_by_manager %}{{ r.reviewed_by_manager.get_full_name|default:r.reviewed_by_manager.username }}{% elif r.reviewed_by_hr %}{{ r.reviewed_by_hr.get_full_name|default:r.reviewed_by_hr.username }} (HR){% else %}-{% endif %}</td>
+      <td style="color:var(--grey-500); font-size:0.8rem;">
+        Employee is on leave today
+        {% if r.reviewed_by_manager %}(Approved by {{ r.reviewed_by_manager.get_full_name|default:r.reviewed_by_manager.username }}){% elif r.reviewed_by_hr %}(Approved by HR — {{ r.reviewed_by_hr.get_full_name|default:r.reviewed_by_hr.username }}){% endif %}
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="8" class="empty-state">No employees on leave today.</td></tr>{% endfor %}
+  </table>
 </div>
 {% endif %}
 
@@ -138,3 +108,7 @@ function toggleApproval(id) {
 }
 </script>
 {% endblock %}
+
+  
+
+

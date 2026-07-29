@@ -93,6 +93,16 @@ def _directory_sort_key(emp):
     dept_key = _department_sort_key(emp.department.name if emp.department else 'zzz_no_department')
     role_within_dept = ROLE_WITHIN_DEPT_PRIORITY.get(emp.role, 2)
     return (1, dept_key, role_within_dept, name)
+BRANCH_ORDER = ['B01', 'B02', 'B03', 'B04']
+
+def _primary_branch(branches):
+    """Picks the 'home' branch for an HR user out of their selected
+    accessible branches — lowest branch code wins (Chennai first)."""
+    branches = list(branches)
+    if not branches:
+        return None
+    branches.sort(key=lambda b: BRANCH_ORDER.index(b.code) if b.code in BRANCH_ORDER else 99)
+    return branches[0]
 
 
 @login_required
@@ -110,28 +120,48 @@ def my_profile(request):
         'pending_resignation': pending_resignation,
     })
 @login_required
+@login_required
 def edit_my_profile(request):
     """Employee's own edit page — separate from the read-only my_profile
-    view. Photo, the handful of self-editable fields, and document
-    upload/delete all live here."""
+    view. Photo, the handful of self-editable fields, bank details, and
+    document upload/delete all live here."""
     profile, _ = EmployeeProfile.objects.get_or_create(user=request.user)
+    bank_detail, _ = BankDetail.objects.get_or_create(user=request.user)
 
     if request.method == 'POST':
         form = EmployeeSelfEditForm(request.POST, request.FILES, instance=profile, user_instance=request.user)
+        bank_form = BankDetailForm(request.POST, instance=bank_detail)
+
+        saved_anything = False
         if form.is_valid():
             form.save()
-            messages.success(request, 'Your profile has been updated.')
-            return redirect('employees:edit_my_profile')
+            saved_anything = True
         else:
-            messages.error(request, 'Please fix the highlighted fields below.')
+            messages.error(request, 'Please fix the highlighted profile fields below.')
+
+        if bank_form.is_valid():
+            bank_form.save()
+            saved_anything = True
+        else:
+            messages.error(request, 'Please fix the highlighted bank detail fields below.')
+
+        if saved_anything:
+            messages.success(request, 'Your profile has been updated.')
+        return redirect('employees:edit_my_profile')
     else:
         form = EmployeeSelfEditForm(instance=profile, user_instance=request.user)
+        bank_form = BankDetailForm(instance=bank_detail)
 
     documents = request.user.documents.all()
     doc_form = SelfDocumentForm()
 
     return render(request, 'employees/edit_my_profile.html', {
-        'form': form, 'profile': profile, 'documents': documents, 'doc_form': doc_form,
+        'form': form,
+        'profile': profile,
+        'documents': documents,
+        'doc_form': doc_form,
+        'bank_form': bank_form,
+        'bank_detail': bank_detail,
     })
 
 @hr_admin_or_manager_required
@@ -421,13 +451,12 @@ def employee_directory(request):
     active_branch = get_active_branch(request)
 
     if request.user.role == 'HR':
-        employees = employees.exclude(role__in=['HR', 'ADMIN'])
+        employees = employees.exclude(role='ADMIN')
+
+    active_branch = get_active_branch(request)
+
     if active_branch:
-        employees = employees.filter(
-            Q(branch=active_branch) | 
-            Q(role='ADMIN') |
-            Q(role='HR', accessible_branches=active_branch)
-            ).distinct()
+        employees = employees.filter(Q(branch=active_branch) | Q(role='ADMIN')).distinct()
 
     if query:
         employees = employees.filter(
@@ -596,9 +625,8 @@ def edit_employee_profile(request, user_id):
     profile, _ = EmployeeProfile.objects.get_or_create(user=emp_user)
     bank_detail, _ = BankDetail.objects.get_or_create(user=emp_user)
 
-    # Prefixes are based on the employee's own branch and are needed both
-    # when saving (to build the full ID from the suffix) and when
-    # rendering the form (to display the prefix + current suffix).
+    # Initial prefixes for GET rendering (and as a fallback if the POST
+    # branch below never actually changes branch).
     employee_id_prefix = employee_id_prefix_for_branch(emp_user.branch)
     enrollment_prefix = enrollment_prefix_for_branch(emp_user.branch)
 
@@ -612,15 +640,23 @@ def edit_employee_profile(request, user_id):
 
         saved_anything = False
 
-        # Basic profile section — save it on its own if it's valid,
-        # regardless of what happens with Identity or Bank below.
         if form.is_valid():
             user_obj = form.save(commit=False)
+            if emp_user.role == 'HR':
+                user_obj.branch = emp_user.branch
+
+            # Branch may have just changed (non-HR roles only — HR's
+            # branch is admin-set separately and locked above). Recompute
+            # the prefixes AFTER the branch is set on user_obj so the ID
+            # generated below always matches the branch being saved,
+            # not the branch this person was on before this submit.
+            employee_id_prefix = employee_id_prefix_for_branch(user_obj.branch)
+            enrollment_prefix = enrollment_prefix_for_branch(user_obj.branch)
+
             if employee_id_suffix:
                 user_obj.employee_id = f"{employee_id_prefix}{employee_id_suffix}"
+            user_obj.save()
 
-            # Keep `manager` in sync with the current department so leave
-            # routing never falls back to a stale/old manager reference.
             if user_obj.role != User.ROLE_MANAGER:
                 dept = form.cleaned_data.get('department')
                 user_obj.manager = dept.manager if (dept and dept.manager_id) else None
@@ -632,7 +668,6 @@ def edit_employee_profile(request, user_id):
         else:
             messages.error(request, "Some basic profile fields need fixing — those weren't saved.")
 
-        # Identity / extended fields — independent of the other two sections.
         if identity_form.is_valid():
             profile_obj = identity_form.save(commit=False)
             if enrollment_suffix:
@@ -642,7 +677,13 @@ def edit_employee_profile(request, user_id):
         else:
             messages.error(request, "Some identity fields need fixing — those weren't saved.")
 
-        # Bank details — independent of the other two sections.
+        saved_anything = False
+        if form.is_valid():
+            form.save()
+            saved_anything = True
+        else:
+            messages.error(request, 'Please fix the highlighted profile fields below.')
+
         if bank_form.is_valid():
             bank_form.save()
             saved_anything = True
@@ -804,10 +845,11 @@ def onboard_hr(request):
             user.role = role
             user.set_password(form.cleaned_data['password'])
 
-            if role in (User.ROLE_EMPLOYEE, User.ROLE_MANAGER):
-                user.branch = form.cleaned_data['branch']
+            if role == User.ROLE_EMPLOYEE:
+                branch = form.cleaned_data['branch']
                 department = form.cleaned_data.get('department')
-                if department and department.manager_id and role != User.ROLE_MANAGER:
+                user.branch = branch
+                if department and department.manager_id:
                     user.manager = department.manager
                 else:
                     user.manager = None
@@ -821,22 +863,37 @@ def onboard_hr(request):
 
                 messages.success(
                     request,
-                    f'{user} onboarded successfully (Employee ID {user.employee_id}, Enrollment ID {profile.enrollment_id}).'
+                    f'{user} onboarded as Employee successfully (Employee ID {user.employee_id}, Enrollment ID {profile.enrollment_id}).'
                 )
 
             else:  # HR or ADMIN
                 user.manager = None
-                user.save()
+                accessible = form.cleaned_data['accessible_branches']
+                user.branch = _primary_branch(accessible)
+
                 if role == User.ROLE_HR:
-                    user.accessible_branches.set(form.cleaned_data['accessible_branches'])
-                EmployeeProfile.objects.create(user=user, status='ONBOARDING')
-                messages.success(request, f'{user} onboarded as {user.get_role_display()} successfully.')
+                    user.employee_id = generate_employee_id(user.branch)
+
+                user.save()
+                user.accessible_branches.set(accessible)
+
+                profile = EmployeeProfile.objects.create(user=user, status='ONBOARDING')
+                if role == User.ROLE_HR:
+                    profile.enrollment_id = generate_enrollment_id(user.branch)
+                    profile.save()
+
+                if role == User.ROLE_HR:
+                    messages.success(
+                        request,
+                        f'{user} onboarded as HR successfully (Employee ID {user.employee_id}, Enrollment ID {profile.enrollment_id}).'
+                    )
+                else:
+                    messages.success(request, f'{user} onboarded as Admin successfully.')
 
             return redirect('employees:employee_detail', user_id=user.id)
     else:
         form = OnboardHRForm()
     return render(request, 'employees/onboard_hr.html', {'form': form})
-
 @login_required
 def complete_onboarding(request, user_id):
     emp_user = get_object_or_404(User, id=user_id)

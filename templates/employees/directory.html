@@ -3,13 +3,12 @@
 <div class="page-header">
   <h1>Employee Directory {% if active_branch %}<span style="font-size:0.9rem; font-weight:500; color:var(--grey-500);">— {{ active_branch.name }}</span>{% endif %}</h1>
    {% if request.user.role == 'ADMIN' %}
-  <a href="{% url 'employees:onboard_hr' %}" class="btn btn-accent">+ Onboard HR / Admin</a>
+  <a href="{% url 'employees:onboard_hr' %}" class="btn btn-accent">+ Onboard hr</a>
   {% endif %}
   {% if request.user.role == 'HR' %}
   <a href="{% url 'employees:onboard' %}" class="btn btn-accent">+ Onboard Employee</a>
   {% endif %}
 </div>
-
 <div class="card">
   <form method="get" id="directory-filter-form" style="display:flex; gap:12px; flex-wrap:wrap; align-items:end; margin-bottom:0;">
     <div style="flex:2; min-width:220px;">
@@ -51,7 +50,7 @@
     <tr>
       <td>{{ emp.get_full_name|default:emp.username }}</td>
       <td>{{ emp.employee_id|default:"-" }}</td>
-      <td>{{ emp.department|default:"No Department" }}</td>
+      <td>{{ emp.department.name|default:"No Department" }}</td>
       <td>{{ emp.get_role_display }}</td>
       <td>
         {% if emp.display_status == 'EXITED' %}

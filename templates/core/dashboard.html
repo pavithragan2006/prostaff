@@ -23,7 +23,9 @@
 
     {% if user.role == 'HR' %}
     <a href="{% url 'attendance:active_attendance_today' %}" class="btn btn-accent">Go to Attendance</a>
-    {% elif user.role != 'ADMIN' %}
+    {% elif user.role == 'ADMIN' %}
+    <a href="{% url 'attendance:punch' %}" class="btn btn-accent">Go to Attendance</a>
+    {% else %}
     <a href="{% url 'attendance:punch' %}" class="btn btn-accent">Go to Attendance</a>
     {% endif %}
   </div>
@@ -31,9 +33,9 @@
 
 {% if user.role == 'ADMIN' %}
 <div class="stat-grid">
-  <div class="stat-card"><div class="stat-value">{{ hr_count }}</div><div class="stat-label">Present HR</div></div>
-  <div class="stat-card"><div class="stat-value">{{ manager_count }}</div><div class="stat-label">Present Managers</div></div>
-  <div class="stat-card"><div class="stat-value">{{ employee_count }}</div><div class="stat-label">Present Employees</div></div>
+  <div class="stat-card"><div class="stat-value">{{ hr_count }}</div><div class="stat-label">Total HR</div></div>
+  <div class="stat-card"><div class="stat-value">{{ manager_count }}</div><div class="stat-label">Total Managers</div></div>
+  <div class="stat-card"><div class="stat-value">{{ employee_count }}</div><div class="stat-label">Total Employees</div></div>
 </div>
 <div class="card">
   <h3>Quick Actions</h3>

@@ -21,16 +21,22 @@ class Branch(models.Model):
 
 
 class Department(models.Model):
-    name = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=100)
+    branch = models.ForeignKey(
+        Branch, null=True, blank=True, on_delete=models.CASCADE, related_name='departments'
+    )
     manager = models.ForeignKey(
         'core.User', null=True, blank=True, on_delete=models.SET_NULL,
         related_name='managed_departments'
     )
 
     class Meta:
-        ordering = ['name']
+        ordering = ['branch__name', 'name']
+        unique_together = ('name', 'branch')
 
     def __str__(self):
+        if self.branch:
+            return f"{self.name} ({self.branch.code})"
         return self.name
 
 

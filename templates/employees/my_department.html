@@ -2,23 +2,37 @@
 {% block content %}
 <div class="page-header"><h1>{{ department|default:"My Department" }} Staff</h1></div>
 
-<div class="stat-grid">
-  {% for s in staff %}
-  <a href="{% url 'employees:team_member_detail' s.id %}"
-     class="card"
-     style="text-decoration:none; color:inherit; display:block; cursor:pointer; transition:box-shadow .15s;">
-    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:6px;">
-      <h3 style="margin:0; font-size:1.05rem;">{{ s.get_full_name|default:s.username }}</h3>
-      {% if s.profile.status == 'EXITED' %}<span class="badge badge-danger">Exited</span>
-      {% elif s.is_present_today %}<span class="badge badge-success">Active</span>
-      {% else %}<span class="badge badge-warning">Inactive</span>{% endif %}
-    </div>
-    <p style="margin:0 0 4px; color:var(--grey-700); font-size:0.85rem;">{{ s.get_role_display }}</p>
-    <p style="margin:0 0 12px; color:var(--grey-500); font-size:0.8rem;">ID: {{ s.employee_id|default:"-" }}</p>
-    <span class="btn btn-outline btn-sm" style="pointer-events:none;">View Details</span>
-  </a>
-  {% empty %}
-  <p class="empty-state">No department assigned to you, or no staff found.</p>
-  {% endfor %}
+<div class="card">
+  <table>
+    <tr>
+      <th>Employee</th>
+      <th>Employee ID</th>
+      <th>Role</th>
+      <th>Status</th>
+      <th>Today</th>
+      <th></th>
+    </tr>
+    {% for s in staff %}
+    <tr>
+      <td>{{ s.get_full_name|default:s.username }}</td>
+      <td>{{ s.employee_id|default:"-" }}</td>
+      <td>{{ s.get_role_display }}</td>
+      <td>
+        {% if s.profile.status == 'EXITED' %}<span class="badge badge-danger">Exited</span>
+        {% elif s.profile.status == 'ONBOARDING' %}<span class="badge badge-warning">Onboarding</span>
+        {% else %}<span class="badge badge-active">Active</span>{% endif %}
+      </td>
+      <td>
+        {% if s.is_present_today %}<span class="badge badge-success">Present Today</span>
+        {% else %}<span class="badge badge-warning">Not Punched In</span>{% endif %}
+      </td>
+      <td>
+        <a href="{% url 'employees:team_member_detail' s.id %}" class="btn btn-outline btn-sm">View Details</a>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="6" class="empty-state">No department assigned to you, or no staff found.</td></tr>
+    {% endfor %}
+  </table>
 </div>
 {% endblock %}

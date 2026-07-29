@@ -8,7 +8,6 @@
   {% endif %}
   <form method="post" id="onboard-form">
     {% csrf_token %}
-    
 
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 20px; margin-top:14px;">
       <div><label>Username</label>{{ form.username|add_error_class }}{% if form.username.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ form.username.errors.0 }}</p>{% endif %}</div>
@@ -21,61 +20,233 @@
       <div><label>Department</label>{{ form.department|add_error_class }}</div>
       <div><label>Joining Date</label>{{ form.date_joined_company|add_error_class }}{% if form.date_joined_company.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ form.date_joined_company.errors.0 }}</p>{% endif %}</div>
       <div><label>Temporary Password</label>{{ form.password|add_error_class }}{% if form.password.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ form.password.errors.0 }}</p>{% endif %}</div>
-     <div><label>Role</label>
-      {{ form.role|add_error_class }}
-      </div>
+
+      <div><label>Role</label>{{ form.role|add_error_class }}</div>
+      <div><label>Department</label>{{ form.department|add_error_class }}</div>
     </div>
 
-    <div id="single-branch-wrap" style="margin-top:14px;">
-      <label>Branch</label>
-      {{ form.branch|add_error_class }}
-      {% if form.branch.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ form.branch.errors.0 }}</p>{% endif %}
-    </div>
 
-    <div id="multi-branch-wrap" style="margin-top:14px;">
-      <label>Branch Access</label>
-      <p style="color:var(--grey-500); font-size:0.8rem; margin-top:-4px;">Select every branch this user should be able to view and manage.</p>
-      <label style="display:inline-flex; align-items:center; gap:6px; font-weight:600; cursor:pointer; margin-bottom:6px;">
-        <input type="checkbox" id="branch-select-all"> Select All Branches
-      </label>
-      <div class="branch-checkbox-grid{% if form.accessible_branches.errors %} branch-checkbox-grid-invalid{% endif %}">
-        {% for checkbox in form.accessible_branches %}
-        <label class="branch-checkbox">{{ checkbox.tag }} {{ checkbox.choice_label }}</label>
-        {% endfor %}
-      </div>
-      {% if form.accessible_branches.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:6px 0 14px;">{{ form.accessible_branches.errors.0 }}</p>{% endif %}
-    </div>
+    
+        <label>Branch Access</label>
+        <div class="branch-dropdown" id="access-dropdown">
+          <button type="button" class="form-control branch-dropdown-toggle{% if form.accessible_branches.errors %} is-invalid{% endif %}" id="access-dropdown-toggle">
+            <span id="access-dropdown-label">-- Select branches --</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="branch-dropdown-menu" id="access-dropdown-menu">
+            <label class="branch-dropdown-option branch-dropdown-option-selectall">
+              <input type="checkbox" id="branch-select-all"> Select All Branches
+            </label>
+            <div class="branch-dropdown-divider"></div>
+            {% for checkbox in form.accessible_branches %}
+            <label class="branch-dropdown-option">{{ checkbox.tag }} {{ checkbox.choice_label }}</label>
+            {% endfor %}
+          </div>
+        </div>
+       
+      
+    
 
     <button type="submit" class="btn btn-primary" style="margin-top:16px;">Onboard</button>
   </form>
 </div>
 
+<style>
+  .branch-dropdown { position:relative; }
+  .branch-dropdown-toggle {
+    display:flex; align-items:center; justify-content:space-between;
+    cursor:pointer; text-align:left; background:#fff;
+  }
+  .branch-dropdown-toggle.is-invalid { border-color:#E4483A; }
+  .branch-dropdown-toggle:disabled { background:var(--grey-50); cursor:not-allowed; color:var(--grey-500); }
+  .branch-dropdown-toggle svg { flex-shrink:0; transition:transform .15s; color:var(--grey-500); }
+  .branch-dropdown.open .branch-dropdown-toggle svg { transform:rotate(180deg); }
+  .branch-dropdown-menu {
+    display:none; position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:20;
+    background:#fff; border:1px solid var(--grey-100); border-radius:8px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.1); padding:6px; max-height:240px; overflow-y:auto;
+  }
+  .branch-dropdown.open .branch-dropdown-menu { display:block; }
+  .branch-dropdown-option {
+    display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:6px;
+    cursor:pointer; font-weight:500; margin:0;
+  }
+  .branch-dropdown-option:hover { background:var(--grey-50); }
+  .branch-dropdown-divider { height:1px; background:var(--grey-100); margin:4px 6px; }
+  .branch-dropdown-option-selectall { font-weight:700; }
+
+  .branch-dropdown-option input[type="checkbox"] {
+    -webkit-appearance:none; appearance:none;
+    width:17px; height:17px; margin:0; flex-shrink:0;
+    border:2px solid var(--grey-300); border-radius:4px;
+    background:#fff; position:relative; cursor:pointer;
+  }
+  .branch-dropdown-option input[type="checkbox"]:checked {
+    background:var(--electric-blue); border-color:var(--electric-blue);
+  }
+  .branch-dropdown-option input[type="checkbox"]:checked::after {
+    content:""; position:absolute; left:4px; top:0px;
+    width:5px; height:10px; border:solid #fff;
+    border-width:0 2px 2px 0; transform:rotate(45deg);
+  }
+</style>
+
 <script>
 (function () {
+  var accessDropdown = document.getElementById('access-dropdown');
+  var accessToggle = document.getElementById('access-dropdown-toggle');
+  var accessLabel = document.getElementById('access-dropdown-label');
+  var selectAll = document.getElementById('branch-select-all');
+  var boxes = accessDropdown.querySelectorAll('.branch-dropdown-menu input[type="checkbox"]:not(#branch-select-all)');
+
   var roleSelect = document.querySelector('#onboard-form select[name="role"]');
   var singleWrap = document.getElementById('single-branch-wrap');
   var multiWrap = document.getElementById('multi-branch-wrap');
+  var singleBranchSelect = document.querySelector('#onboard-form select[name="branch"]');
+  var deptSelect = document.querySelector('#onboard-form select[name="department"]');
+  var deptAllOptions = deptSelect ? Array.prototype.slice.call(deptSelect.options) : [];
 
-  function update() {
-    var role = roleSelect.value;
-    var needsSingle = (role === 'EMPLOYEE' || role === 'MANAGER');
-    singleWrap.style.display = needsSingle ? '' : 'none';
-    multiWrap.style.display = needsSingle ? 'none' : '';
+  function syncAccessLabel() {
+    var checked = Array.prototype.filter.call(boxes, function (b) { return b.checked; });
+    if (checked.length === 0) {
+      accessLabel.textContent = '-- Select branches --';
+    } else if (checked.length === boxes.length) {
+      accessLabel.textContent = 'All Branches';
+    } else {
+      accessLabel.textContent = checked.map(function (b) {
+        return b.closest('.branch-dropdown-option').textContent.trim();
+      }).join(', ');
+    }
   }
 
-  roleSelect.addEventListener('change', update);
-  update();
+  function filterDepartmentOptions(allowedBranchIds) {
+    if (!deptSelect) return;
+    var currentValue = deptSelect.value;
+    deptSelect.innerHTML = '';
+    deptAllOptions.forEach(function (opt) {
+      var optBranch = opt.getAttribute('data-branch');
+      if (!opt.value || !optBranch || allowedBranchIds === null || allowedBranchIds.indexOf(optBranch) !== -1) {
+        deptSelect.appendChild(opt);
+      }
+    });
+    var stillValid = Array.prototype.some.call(deptSelect.options, function (o) { return o.value === currentValue; });
+    deptSelect.value = stillValid ? currentValue : '';
+  }
 
-  var selectAll = document.getElementById('branch-select-all');
-  var boxes = document.querySelectorAll('.branch-checkbox-grid input[type=checkbox]');
+  function updateDeptFilterForCurrentMode() {
+    var role = roleSelect.value;
+    if (role === 'EMPLOYEE') {
+      var branchId = singleBranchSelect.value;
+      filterDepartmentOptions(branchId ? [branchId] : []);
+    } else {
+      var ids = Array.prototype.filter.call(boxes, function (b) { return b.checked; }).map(function (b) { return b.value; });
+      filterDepartmentOptions(ids.length ? ids : null);
+    }
+  }
+
+  function updateRoleMode() {
+    var role = roleSelect.value;
+    var needsSingle = (role === 'EMPLOYEE');
+    singleWrap.style.display = needsSingle ? '' : 'none';
+    multiWrap.style.display = needsSingle ? 'none' : '';
+    updateDeptFilterForCurrentMode();
+  }
+
+  roleSelect.addEventListener('change', updateRoleMode);
+  if (singleBranchSelect) singleBranchSelect.addEventListener('change', updateDeptFilterForCurrentMode);
+
+  accessToggle.addEventListener('click', function (e) {
+    e.stopPropagation();
+    accessDropdown.classList.toggle('open');
+  });
+  document.addEventListener('click', function (e) {
+    if (!accessDropdown.contains(e.target)) accessDropdown.classList.remove('open');
+  });
+
   selectAll.addEventListener('change', function () {
     boxes.forEach(function (b) { b.checked = selectAll.checked; });
+    syncAccessLabel();
+    updateDeptFilterForCurrentMode();
   });
   boxes.forEach(function (b) {
     b.addEventListener('change', function () {
       selectAll.checked = Array.prototype.every.call(boxes, function (x) { return x.checked; });
+      syncAccessLabel();
+      updateDeptFilterForCurrentMode();
     });
   });
+
+  syncAccessLabel();
+  updateRoleMode();
+})();
+</script>
+<script>
+(function () {
+  var branchSelect = document.querySelector('form select[name="branch"]');
+  var deptSelect = document.querySelector('form select[name="department"]');
+  if (!branchSelect || !deptSelect) return;
+
+  var allOptions = Array.prototype.slice.call(deptSelect.options);
+
+  function filterDepartments() {
+    var branchId = branchSelect.value;
+    var currentValue = deptSelect.value;
+    deptSelect.innerHTML = '';
+
+    allOptions.forEach(function (opt) {
+      var optBranch = opt.getAttribute('data-branch');
+      if (!opt.value || !optBranch || optBranch === branchId) {
+        deptSelect.appendChild(opt);
+      }
+    });
+
+    var stillValid = Array.prototype.some.call(deptSelect.options, function (o) {
+      return o.value === currentValue;
+    });
+    deptSelect.value = stillValid ? currentValue : '';
+  }
+
+  branchSelect.addEventListener('change', filterDepartments);
+  filterDepartments();
+})();
+</script>
+<script>
+(function () {
+  var deptSelect = document.querySelector('#onboard-form select[name="department"]');
+  var checkboxes = document.querySelectorAll('#access-dropdown-menu input[type="checkbox"]:not(#branch-select-all)');
+  if (!deptSelect || !checkboxes.length) return;
+
+  var allOptions = Array.prototype.slice.call(deptSelect.options);
+
+  function checkedBranchIds() {
+    return Array.prototype.filter.call(checkboxes, function (cb) { return cb.checked; })
+      .map(function (cb) { return cb.value; });
+  }
+
+  function filterDepartments() {
+    var ids = checkedBranchIds();
+    var currentValue = deptSelect.value;
+    deptSelect.innerHTML = '';
+
+    allOptions.forEach(function (opt) {
+      var optBranch = opt.getAttribute('data-branch');
+      // No branches checked yet -> show everything; otherwise restrict
+      // to departments belonging to a checked branch.
+      if (!opt.value || !optBranch || ids.length === 0 || ids.indexOf(optBranch) !== -1) {
+        deptSelect.appendChild(opt);
+      }
+    });
+
+    var stillValid = Array.prototype.some.call(deptSelect.options, function (o) {
+      return o.value === currentValue;
+    });
+    deptSelect.value = stillValid ? currentValue : '';
+  }
+
+  checkboxes.forEach(function (cb) {
+    cb.addEventListener('change', filterDepartments);
+  });
+  filterDepartments();
 })();
 </script>
 {% endblock %}

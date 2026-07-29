@@ -24,7 +24,9 @@ def user_can_switch_branch(user):
     if user.role == 'ADMIN':
         return True
     if user.role == 'HR':
-        return user.can_access_all_branches or user.accessible_branches.exists()
+        if user.can_access_all_branches:
+            return True
+        return user.accessible_branches.exclude(id=user.branch_id).exists()
     return False
 def get_manager_team(manager):
     """Everyone reporting to this manager, either via department headship
