@@ -3,7 +3,9 @@
 <div class="page-header">
   <h1>My Profile</h1>
   <div style="display:flex; gap:10px; align-items:center;">
-    {% if can_apply_resignation %}
+    {% if user.role == 'ADMIN' %}
+      <a href="{% url 'employees:edit_my_profile' %}" class="btn btn-accent">Edit Profile</a>
+    {% elif can_apply_resignation %}
       {% if pending_resignation.status == 'PENDING' %}
       <span class="badge badge-warning">Resignation Pending HR Review</span>
       {% elif pending_resignation.status == 'NEGOTIATING' %}
@@ -13,7 +15,6 @@
       <a href="{% url 'employees:apply_resignation' %}" class="btn btn-danger">Apply for Resignation</a>
       {% endif %}
     {% endif %}
-    
   </div>
 </div>
 
@@ -79,7 +80,7 @@
     <div><label style="font-weight:700;">Employee ID</label><p style="margin:0;">{{ user.employee_id|default:"-" }}</p></div>
     <div><label style="font-weight:700;">PF Status</label><p style="margin:0;">{% if profile.is_pf_applicable %}PF{% else %}Non-PF{% endif %}</p></div>
     <div><label style="font-weight:700;">Name</label><p style="margin:0;">{{ user.get_full_name|default:user.username }}</p></div>
-    <div><label style="font-weight:700;">Status</label><p style="margin:0;">{% if profile.status == 'EXITED' %}<span >Exited</span>
+    <div><label style="font-weight:700;">Status</label><p style="margin:0;">{% if profile.status == 'EXITED' %}<span>Exited</span>
       {% elif profile.status == 'ONBOARDING' %}<span>Onboarding</span>
       {% else %}<span>Active</span>{% endif %}</p></div>
     <div><label style="font-weight:700;">ID Card Received</label><p style="margin:0;">{% if profile.id_card_received %}Yes{% else %}No{% endif %}</p></div>

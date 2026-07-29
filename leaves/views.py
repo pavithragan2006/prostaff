@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.utils import timezone
 from django.db.models import Q
 from core.utils import get_active_branch, get_manager_team
-from leaves.utils import not_expired_leaves
+from leaves.utils import not_expired_leaves, approved_on_leave_today
 
 from core.models import User
 from leaves.models import LeaveRequest, LeaveBalance, LeaveNotification
@@ -93,11 +93,14 @@ def _team_managed_by(manager):
 def leave_approvals(request):
     user = request.user
     today = timezone.localdate()
-    context = {'manager_approved_notices': None, 'hr_rejected_pending': None}
+    context = {'hr_rejected_pending': None, 'on_leave_today': None}
 
     if user.role == 'HR':
         active_branch = get_active_branch(request)
 
+        # HR's actionable queue: Manager's own requests routed straight
+        # to HR, plus HR-self requests targeted at this HR colleague.
+        # Employee requests never land here anymore.
         requests_qs = LeaveRequest.objects.filter(
             status='PENDING_HR'
         ).exclude(user=user).filter(
@@ -105,46 +108,18 @@ def leave_approvals(request):
         ).select_related('user', 'user__profile', 'user__department', 'reviewed_by_manager')
         if active_branch:
             requests_qs = requests_qs.filter(user__branch=active_branch)
-        # NOTE: pending requests stay visible regardless of date. Hiding
-        # them by date is what let overdue requests become permanently
-        # un-actionable. not_expired_leaves is only used below, for
-        # already-APPROVED requests that are still currently in effect.
         context['requests'] = requests_qs
 
-        # Safety net: requests still stuck at PENDING_MANAGER (e.g. no
-        # manager existed for that department at all when submitted).
-        # Scoped to this HR's active branch.
-        stale_manager_qs = LeaveRequest.objects.filter(
-            status='PENDING_MANAGER'
-        ).select_related('user', 'user__profile', 'user__department')
-        if active_branch:
-            stale_manager_qs = stale_manager_qs.filter(user__branch=active_branch)
-        context['stale_manager_requests'] = stale_manager_qs
-
-        now_time = timezone.localtime().time()
-
-        candidates = LeaveRequest.objects.filter(
-            status='APPROVED'
-        ).exclude(user=user).select_related('user', 'reviewed_by_manager').order_by('-hr_reviewed_at')
-        if active_branch:
-            candidates = candidates.filter(user__branch=active_branch)
-        candidates = candidates[:50]
-
-        still_active = []
-        for r in candidates:
-            if r.request_type == 'PERMISSION':
-                if not r.permission_date or r.permission_date < today:
-                    continue
-                if r.permission_date == today and r.to_time and now_time > r.to_time:
-                    continue
-            else:  # LEAVE
-                if not r.end_date or r.end_date < today:
-                    continue
-            still_active.append(r)
-            if len(still_active) >= 20:
-                break
-        context['manager_approved_notices'] = still_active
-
+        # INFORMATIONAL ONLY: requests stuck at PENDING_MANAGER because no
+        # manager could be resolved (e.g. the department has no manager
+        # assigned). HR sees these so they know to fix the department's
+        # manager assignment, but per policy cannot approve/reject them —
+        # review_leave() now enforces that only the resolved manager can.
+      
+        # Approved leaves currently in effect today — this is where HR
+        # sees the outcome of a Manager's approval, scoped to their branch.
+        context['on_leave_today'] = approved_on_leave_today(active_branch)
+        
     elif user.role == 'ADMIN':
         active_branch = get_active_branch(request)
         requests_qs = LeaveRequest.objects.select_related(
@@ -153,24 +128,25 @@ def leave_approvals(request):
         if active_branch:
             requests_qs = requests_qs.filter(user__branch=active_branch)
         context['requests'] = requests_qs
+        context['on_leave_today'] = approved_on_leave_today(active_branch)
 
     elif user.is_manager():
+        # A Manager's queue is exclusively their own department's
+        # Employees, same branch — Manager's own leave requests never
+        # appear here since those route straight to HR.
         team = _team_managed_by(user)
         requests_qs = LeaveRequest.objects.filter(
             user__in=team, status='PENDING_MANAGER'
         ).select_related('user', 'user__profile', 'user__department')
         context['requests'] = requests_qs
 
-        rejected_qs = LeaveRequest.objects.filter(
-            reviewed_by_manager=user, status='HR_REJECTED_PENDING_MANAGER'
-        ).select_related('user', 'user__profile', 'user__department')
-        context['hr_rejected_pending'] = rejected_qs
-
     else:
         messages.error(request, "You do not have permission to view this page.")
         return redirect('core:dashboard')
 
     return render(request, 'leaves/approvals.html', context)
+
+
 @login_required
 def review_leave(request, leave_id, decision):
     user = request.user
@@ -181,38 +157,25 @@ def review_leave(request, leave_id, decision):
         messages.error(request, "Admin has view-only access and cannot approve or reject requests.")
         return redirect('leaves:approvals')
 
-    # ---- Stage 0: manager finalizing a request HR sent back ----
-    if leave.status == 'HR_REJECTED_PENDING_MANAGER':
+    # ---- Stage: Manager review (Employee's request) — FINAL decision.
+    # Only the employee's own Department Manager (same branch) can act
+    # here. HR can no longer stand in — a leave request must be
+    # approved/rejected by that specific manager. ----
+    if leave.status == 'PENDING_MANAGER':
         approving_manager = leave.get_manager()
         if not (user.is_manager() and approving_manager and approving_manager.id == user.id):
-            messages.error(request, "You cannot action this request.")
+            messages.error(request, "You cannot review this request.")
             return redirect('leaves:approvals')
-
-        leave.status = 'REJECTED'
-        leave.save()
-        _notify(leave.user, leave, f"Your {label.lower()} request was rejected (HR declined it; your manager has finalized the rejection).")
-        messages.success(request, f"{label} request rejected for {leave.user}.")
-        return redirect('leaves:approvals')
-
-    # ---- Stage 1: manager review (also reachable by HR for requests
-    # stuck at PENDING_MANAGER past their date, since no manager's queue
-    # will ever surface those) ----
-    # ---- Stage 1: manager review (HR can also act on requests stuck at
-    # PENDING_MANAGER — safety net for departments that had no manager) ----
-    if leave.status == 'PENDING_MANAGER' and (user.is_manager() or user.role == 'HR'):
-        if user.is_manager():
-            approving_manager = leave.get_manager()
-            if not approving_manager or approving_manager.id != user.id:
-                messages.error(request, "You cannot review this request.")
-                return redirect('leaves:approvals')
 
         leave.reviewed_by_manager = user
         leave.manager_reviewed_at = timezone.now()
 
         if decision == 'approve':
-            leave.status = 'PENDING_HR'
+            leave.status = 'APPROVED'
             leave.save()
-            messages.success(request, f"{label} approved and forwarded to HR for {leave.user}.")
+            _apply_balance_deduction(leave)
+            _notify(leave.user, leave, f"Your {label.lower()} request was approved by your manager.")
+            messages.success(request, f"{label} approved for {leave.user}.")
         else:
             leave.status = 'REJECTED'
             leave.save()
@@ -220,7 +183,8 @@ def review_leave(request, leave_id, decision):
             messages.success(request, f"{label} rejected for {leave.user}.")
         return redirect('leaves:approvals')
 
-    # ---- Stage 2: HR review ----
+    # ---- Stage: HR review (Manager's own request, or an HR-self request
+    # targeted at this HR colleague) — FINAL decision. ----
     if user.role == 'HR' and leave.status == 'PENDING_HR':
         if leave.user_id == user.id:
             messages.error(request, "You cannot approve or reject your own request.")
@@ -237,27 +201,16 @@ def review_leave(request, leave_id, decision):
             leave.save()
             _apply_balance_deduction(leave)
             _notify(leave.user, leave, f"Your {label.lower()} request was approved by HR.")
-            if leave.reviewed_by_manager_id:
-                _notify(leave.reviewed_by_manager, leave, f"HR approved {leave.user}'s {label.lower()} request.")
             messages.success(request, f"{label} approved for {leave.user}.")
         else:
-            if leave.requires_manager_finalization:
-                # A manager already approved this — send it back to them to
-                # finalize the rejection rather than rejecting it outright.
-                leave.status = 'HR_REJECTED_PENDING_MANAGER'
-                leave.save()
-                _notify(leave.reviewed_by_manager, leave, f"HR rejected {leave.user}'s {label.lower()} request. Please finalize the rejection.")
-                messages.info(request, f"Sent back to {leave.reviewed_by_manager} to finalize the rejection.")
-            else:
-                leave.status = 'REJECTED'
-                leave.save()
-                _notify(leave.user, leave, f"Your {label.lower()} request was rejected by HR.")
-                messages.success(request, f"{label} rejected for {leave.user}.")
+            leave.status = 'REJECTED'
+            leave.save()
+            _notify(leave.user, leave, f"Your {label.lower()} request was rejected by HR.")
+            messages.success(request, f"{label} rejected for {leave.user}.")
         return redirect('leaves:approvals')
 
     messages.error(request, "You cannot review this request.")
     return redirect('core:dashboard')
-
 
 @login_required
 def notifications(request):

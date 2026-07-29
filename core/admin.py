@@ -15,15 +15,21 @@ class SimpleUserChangeForm(UserChangeForm):
         super().__init__(*args, **kwargs)
         if 'password' in self.fields:
             del self.fields['password']
+
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
+    list_display = ('name', 'branch', 'manager')
+    list_filter = ('branch',)
+
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
         # When a manager is appointed/removed on a department, push that
         # change onto every employee in it, so leave-request routing
         # (LeaveRequest.get_manager) always sees the current manager.
-        User.objects.filter(department=obj, role='EMPLOYEE').update(manager=obj.manager)
-
+        # Scoped to the SAME branch as this department, so touching
+        # Kancheepuram's Data Entry never reassigns Chennai's Data Entry staff.
+        User.objects.filter(department=obj, role='EMPLOYEE', branch=obj.branch).update(manager=obj.manager)
+        
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
     form = SimpleUserChangeForm
@@ -31,9 +37,10 @@ class CustomUserAdmin(UserAdmin):
     fieldsets = (
         (None, {'fields': ('username', 'reset_password_link')}),
         ('Personal Info', {'fields': ('first_name', 'last_name', 'email')}),
-        ('HRMS Info', {'fields': ('role', 'employee_id', 'department', 'manager', 'date_joined_company', 'phone')}),
+        ('HRMS Info', {'fields': ('role', 'employee_id', 'department', 'manager', 'branch', 'accessible_branches', 'can_access_all_branches', 'date_joined_company', 'phone')}),
         ('Access', {'fields': ('is_active',)}),
     )
+    
 
     add_fieldsets = (
         (None, {

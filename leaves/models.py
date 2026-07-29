@@ -81,20 +81,15 @@ class LeaveRequest(models.Model):
         the manager stage. Manager's-own and HR's-own requests skip the
         manager stage entirely, so this stays False for them."""
         return self.reviewed_by_manager_id is not None
-
     def get_manager(self):
-        """The manager who should review this at the manager stage. Only
-        relevant for non-manager employees — manager-level requests always
-        skip straight to HR (see initial_status).
-
-        IMPORTANT: this must stay consistent with core.utils.get_manager_team,
-        which is what actually populates a manager's approvals queue (and
-        the notification badge). That function only includes people in the
-        SAME branch as the manager — so a candidate manager in a different
-        branch is not a valid reviewer here either. Picking one anyway would
-        route the request to PENDING_MANAGER while leaving it permanently
-        invisible to that manager (it would never appear in their queue,
-        and they'd have no way to approve or reject it)."""
+        """The manager who should review this. Only relevant for non-manager
+        employees — manager-level requests always skip straight to HR (see
+        initial_status). Mirrors core.utils.get_manager_team, which is what
+        actually populates a manager's approvals queue — so a manager who
+        can see this request in their queue must also be able to act on it.
+        We do NOT check dept.branch here; only the resolved manager's branch
+        has to match the employee's branch, exactly like get_manager_team's
+        `branch=manager.branch` filter."""
         dept = self.user.department
         candidate = None
         if dept and dept.manager_id and dept.manager_id != self.user_id:
@@ -105,20 +100,18 @@ class LeaveRequest(models.Model):
         if candidate and candidate.branch_id == self.user.branch_id:
             return candidate
         return None
-
+    
     def initial_status(self):
-        """Decide the starting stage when this request is created."""
-        if self.user.role in ('MANAGER', 'HR'):
-            # Managers go straight to HR. HR requests go straight to the
-            # chosen target_hr (still represented as PENDING_HR).
+       
+         if self.user.role in ('MANAGER', 'HR'):
             return 'PENDING_HR'
-        if self.get_manager():
-            return 'PENDING_MANAGER'
-        return 'PENDING_HR'
+         return 'PENDING_MANAGER'
+
+    def get_request_type_display_full(self):
+                return self.get_request_type_display()
 
     def __str__(self):
-        return f"{self.user} - {self.get_request_type_display()} ({self.status})"
-
+                return f"{self.user} - {self.get_request_type_display()} ({self.status})"
 
 class LeaveNotification(models.Model):
     """A simple inbox entry telling a user about a decision made on a
@@ -135,3 +128,4 @@ class LeaveNotification(models.Model):
 
     def __str__(self):
         return f"Notification for {self.user}: {self.message}"
+

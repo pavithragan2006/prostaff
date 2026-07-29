@@ -51,13 +51,14 @@ def dashboard(request):
     active_branch = get_active_branch(request)   # <-- moved above the if/elif, computed once for every role
 
     if user.role == 'ADMIN':
-        base_qs = EmployeeProfile.objects.filter(status='ACTIVE').select_related('user')
+        base_qs = EmployeeProfile.objects.select_related('user')
         if active_branch:
             base_qs = base_qs.filter(user__branch=active_branch)
+        # "Total" counts — every HR/Manager/Employee regardless of
+        # Active/Onboarding/Exited status, scoped to the active branch.
         context['hr_count'] = base_qs.filter(user__role='HR').count()
         context['manager_count'] = base_qs.filter(user__role='MANAGER').count()
         context['employee_count'] = base_qs.filter(user__role='EMPLOYEE').count()
-
     elif user.role == 'HR':
         base_qs = EmployeeProfile.objects.exclude(user__role__in=['HR', 'ADMIN'])
         if active_branch:

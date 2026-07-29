@@ -28,7 +28,13 @@
       <td>{{ r.date }}</td>
       <td>{{ r.in_time|time:"h:i A"|default:"-" }}</td>
       <td>{{ r.out_time|time:"h:i A"|default:"-" }}</td>
-      <td>{% if r.is_late %}<span class="badge badge-warning">Late</span>{% else %}<span class="badge badge-success">On time</span>{% endif %}</td>
+      <td>
+        {% if r.in_time %}
+          {% if r.is_late %}<span class="badge badge-warning">Late</span>{% else %}<span class="badge badge-success">On time</span>{% endif %}
+        {% else %}
+          <span style="color:var(--grey-400);">-</span>
+        {% endif %}
+      </td>
     </tr>
     {% empty %}<tr><td colspan="5" class="empty-state"></td></tr>{% endfor %}
   </table>

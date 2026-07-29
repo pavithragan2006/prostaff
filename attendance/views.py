@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from core.decorators import hr_or_admin_required,hr_only_required
 from core.models import User
-from attendance.models import AttendanceRecord, MonthlyAttendanceSheet
+from attendance.models import AttendanceRecord, MonthlyAttendanceSheet 
 from attendance.utils import (
     normalize_year_month, build_monthly_summary, generate_monthly_excel,
     regenerate_and_save_monthly_sheet, build_team_monthly_summary,
@@ -16,10 +16,10 @@ from attendance.utils import (
     generate_weekly_excel, generate_yearly_excel, get_week_options,
 )
 from django.db.models import Q
-from attendance.models import AttendanceRecord, MonthlyAttendanceSheet, OvertimePermission
-from projects.models import Project
+from attendance.models import AttendanceRecord, MonthlyAttendanceSheet, OvertimePermission,  OvertimeRequest
+from projects.models import Project, ProjectAssignment
 from django.urls import reverse
-from core.utils import get_active_branch
+from core.utils import get_active_branch, get_manager_team
 
 @login_required
 def punch(request):
@@ -422,14 +422,48 @@ def overtime_permissions(request):
     )
     if active_branch:
         permissions = permissions.filter(employee__branch=active_branch)
-    permissions = permissions[:150]
+    pending_requests = OvertimeRequest.objects.none()
+    pending_hr_requests = OvertimeRequest.objects.none()
+    request_history = OvertimeRequest.objects.none()
+
+    if request.user.is_manager():
+        team = get_manager_team(request.user)
+        pending_requests = OvertimeRequest.objects.filter(
+            employee__in=team, status='PENDING_MANAGER'
+        ).select_related('employee', 'project')
+        request_history = OvertimeRequest.objects.filter(
+            employee__in=team
+        ).exclude(status='PENDING_MANAGER').select_related(
+            'employee', 'project', 'reviewed_by_manager'
+        )[:100]
+
+    elif request.user.role == 'HR':
+        base_qs = OvertimeRequest.objects.select_related(
+            'employee', 'project', 'reviewed_by_manager', 'reviewed_by_hr'
+        )
+        if active_branch:
+            base_qs = base_qs.filter(employee__branch=active_branch)
+        pending_hr_requests = base_qs.filter(status='PENDING_HR')
+        request_history = base_qs.exclude(status='PENDING_HR').order_by('-submitted_at')[:150]
+
+    elif is_admin:
+        # Admin stays fully view-only here — sees everything, acts on nothing.
+        base_qs = OvertimeRequest.objects.select_related(
+            'employee', 'project', 'reviewed_by_manager', 'reviewed_by_hr'
+        )
+        if active_branch:
+            base_qs = base_qs.filter(employee__branch=active_branch)
+        pending_hr_requests = base_qs.filter(status='PENDING_HR')
+        request_history = base_qs.exclude(status='PENDING_HR').order_by('-submitted_at')[:150]
 
     return render(request, 'attendance/overtime_permissions.html', {
-        'projects': projects, 'projects_data': projects_data,
-        'permissions': permissions, 'today': timezone.localdate(),
+        'pending_requests': pending_requests,
+        'pending_hr_requests': pending_hr_requests,
+        'request_history': request_history,
         'is_admin': is_admin,
+        'is_manager': request.user.is_manager(),
+        'is_hr': request.user.role == 'HR',
     })
-
 
 @login_required
 def revoke_overtime_permission(request, permission_id):
@@ -448,10 +482,71 @@ def revoke_overtime_permission(request, permission_id):
     return redirect('attendance:overtime_permissions')
 @login_required
 def my_overtime_permissions(request):
-    """Read-only view for an employee to see exactly which dates they've
-    been authorized to work overtime and/or Sunday, and by whom."""
+    """Employee's own OT/Sunday/Holiday hub: submit new requests here and
+    track both submitted requests and any project-based permissions HR/
+    Manager has separately granted."""
+    user = request.user
+
+    assigned_project_ids = ProjectAssignment.objects.filter(user=user, is_current=True).values_list('project_id', flat=True)
+    led_project_ids = Project.objects.filter(lead=user).values_list('id', flat=True)
+    my_projects = Project.objects.filter(
+        Q(id__in=assigned_project_ids) | Q(id__in=led_project_ids),
+        status__in=['APPROVED', 'COMPLETED'],
+    ).distinct()
+
+    if request.method == 'POST':
+        project_id = request.POST.get('project')
+        req_date_raw = request.POST.get('date')
+        request_type = request.POST.get('request_type', OvertimeRequest.TYPE_OT)
+        start_time_raw = request.POST.get('start_time')
+        end_time_raw = request.POST.get('end_time')
+        reason = request.POST.get('reason', '')
+
+        allowed_project_ids = set(str(pid) for pid in my_projects.values_list('id', flat=True))
+
+        if not project_id or project_id not in allowed_project_ids:
+            messages.error(request, "Select a project you're assigned to.")
+            return redirect('attendance:my_overtime_permissions')
+        if not req_date_raw or not start_time_raw or not end_time_raw:
+            messages.error(request, "Date, start time and end time are required.")
+            return redirect('attendance:my_overtime_permissions')
+
+        try:
+            req_date = datetime.strptime(req_date_raw, '%Y-%m-%d').date()
+            start_time_val = datetime.strptime(start_time_raw, '%H:%M').time()
+            end_time_val = datetime.strptime(end_time_raw, '%H:%M').time()
+        except ValueError:
+            messages.error(request, "Invalid date or time format.")
+            return redirect('attendance:my_overtime_permissions')
+
+        ot_request = OvertimeRequest(
+            employee=user,
+            project_id=project_id,
+            department=user.department,
+            date=req_date,
+            request_type=request_type,
+            start_time=start_time_val,
+            end_time=end_time_val,
+            reason=reason,
+        )
+        ot_request.status = 'PENDING_MANAGER' if ot_request.get_manager() else 'APPROVED'
+        ot_request.save()
+
+        if user.is_manager():
+            ot_request.status = 'PENDING_HR'
+        else:
+            ot_request.status = 'PENDING_MANAGER' if ot_request.get_manager() else 'PENDING_HR'
+        ot_request.save()
+
+        messages.success(request, "Your OT/Sunday/Holiday request has been submitted.")
+        return redirect('attendance:my_overtime_permissions')
+    
+    my_requests = OvertimeRequest.objects.filter(employee=user).select_related(
+        'project', 'reviewed_by_manager', 'reviewed_by_hr'
+    )
+
     permissions = OvertimePermission.objects.filter(
-        employee=request.user
+        employee=user
     ).select_related('project', 'project__manager', 'authorized_by').order_by('-date')
 
     today = timezone.localdate()
@@ -460,8 +555,8 @@ def my_overtime_permissions(request):
 
     return render(request, 'attendance/my_overtime_permissions.html', {
         'upcoming': upcoming, 'past': past,
+        'my_projects': my_projects, 'my_requests': my_requests,
     })
-
 @hr_only_required
 def update_monthly_overrides(request, user_id):
     """HR can override an employee's CL Quota and Total (PH/Sunday) count
@@ -493,3 +588,73 @@ def update_monthly_overrides(request, user_id):
         messages.success(request, f"Updated overrides for {emp_user} — {year}-{month:02d}.")
 
     return redirect(f"{reverse('attendance:employee_attendance_view', args=[emp_user.id])}?view=monthly&year={year}&month={month}")
+
+@login_required
+def approve_overtime_request(request, request_id):
+    ot_request = get_object_or_404(OvertimeRequest, id=request_id)
+    user = request.user
+    manager = ot_request.get_manager()
+
+    if not (user.is_manager() and manager and manager.id == user.id and ot_request.status == 'PENDING_MANAGER'):
+        messages.error(request, "You cannot act on this request.")
+        return redirect('attendance:overtime_permissions')
+
+    if request.method == 'POST':
+        ot_request.approve_by_manager(user, comment=request.POST.get('comment', ''))
+        messages.success(request, f"Approved OT/Sunday/Holiday request for {ot_request.employee}.")
+    return redirect('attendance:overtime_permissions')
+
+
+@login_required
+def reject_overtime_request(request, request_id):
+    ot_request = get_object_or_404(OvertimeRequest, id=request_id)
+    user = request.user
+    manager = ot_request.get_manager()
+
+    if not (user.is_manager() and manager and manager.id == user.id and ot_request.status == 'PENDING_MANAGER'):
+        messages.error(request, "You cannot act on this request.")
+        return redirect('attendance:overtime_permissions')
+
+    if request.method == 'POST':
+        ot_request.reject_by_manager(user, comment=request.POST.get('comment', ''))
+        messages.info(request, f"Rejected OT/Sunday/Holiday request for {ot_request.employee}.")
+    return redirect('attendance:overtime_permissions')
+
+@login_required
+def approve_overtime_request_hr(request, request_id):
+    ot_request = get_object_or_404(OvertimeRequest, id=request_id)
+    active_branch = get_active_branch(request)
+
+    can_act = (
+        request.user.role == 'HR'
+        and ot_request.status == 'PENDING_HR'
+        and (not active_branch or ot_request.employee.branch_id == active_branch.id)
+    )
+    if not can_act:
+        messages.error(request, "You cannot act on this request.")
+        return redirect('attendance:overtime_permissions')
+
+    if request.method == 'POST':
+        ot_request.approve_by_hr(request.user, comment=request.POST.get('comment', ''))
+        messages.success(request, f"Approved OT/Sunday/Holiday request for {ot_request.employee}.")
+    return redirect('attendance:overtime_permissions')
+
+
+@login_required
+def reject_overtime_request_hr(request, request_id):
+    ot_request = get_object_or_404(OvertimeRequest, id=request_id)
+    active_branch = get_active_branch(request)
+
+    can_act = (
+        request.user.role == 'HR'
+        and ot_request.status == 'PENDING_HR'
+        and (not active_branch or ot_request.employee.branch_id == active_branch.id)
+    )
+    if not can_act:
+        messages.error(request, "You cannot act on this request.")
+        return redirect('attendance:overtime_permissions')
+
+    if request.method == 'POST':
+        ot_request.reject_by_hr(request.user, comment=request.POST.get('comment', ''))
+        messages.info(request, f"Rejected OT/Sunday/Holiday request for {ot_request.employee}.")
+    return redirect('attendance:overtime_permissions')
