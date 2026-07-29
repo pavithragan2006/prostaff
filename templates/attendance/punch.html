@@ -8,7 +8,13 @@
   {% if record.in_time and record.out_time %}
     <p>You have completed today's attendance.</p>
     <p>In: <strong>{{ record.in_time|time:"h:i A" }}</strong> &nbsp;|&nbsp; Out: <strong>{{ record.out_time|time:"h:i A" }}</strong> &nbsp;|&nbsp; Total: <strong>{{ record.total_hours }} hrs</strong></p>
-    {% if record.is_late %}<span class="badge badge-warning">Late by {{ record.late_minutes }} min</span>{% endif %}
+    <td>
+      {% if r.in_time %}
+        {% if r.is_late %}<span class="badge badge-warning">Late</span>{% else %}<span class="badge badge-success">On time</span>{% endif %}
+      {% else %}
+        <span style="color:var(--grey-400);">-</span>
+      {% endif %}
+    </td>
   {% elif record.in_time %}
     <p>Punched in at <strong>{{ record.in_time|time:"h:i A" }}</strong></p>
     <form method="post">{% csrf_token %}<input type="hidden" name="action" value="out">
@@ -27,12 +33,18 @@
   <table>
     <tr><th>Date</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th></tr>
     {% for r in my_records %}
-    <tr>
+   <tr>
       <td>{{ r.date }}</td>
       <td>{{ r.in_time|time:"h:i A"|default:"-" }}</td>
       <td>{{ r.out_time|time:"h:i A"|default:"-" }}</td>
       <td>{{ r.total_hours }}</td>
-      <td>{% if r.is_late %}<span class="badge badge-warning">Late</span>{% else %}<span class="badge badge-success">On time</span>{% endif %}</td>
+      <td>
+        {% if r.in_time %}
+          {% if r.is_late %}<span class="badge badge-warning">Late</span>{% else %}<span class="badge badge-success">On time</span>{% endif %}
+        {% else %}
+          <span style="color:var(--grey-400);">-</span>
+        {% endif %}
+      </td>
     </tr>
     {% empty %}
     <tr><td colspan="5" class="empty-state">No attendance records yet.</td></tr>

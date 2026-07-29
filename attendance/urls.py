@@ -29,4 +29,10 @@ urlpatterns = [
     path('overtime/<int:permission_id>/revoke/', views.revoke_overtime_permission, name='revoke_overtime_permission'),
     path('overtime/mine/', views.my_overtime_permissions, name='my_overtime_permissions'),
     path('employee/<int:user_id>/attendance/overrides/', views.update_monthly_overrides, name='update_monthly_overrides'),
+    path('overtime-requests/<int:request_id>/approve/', views.approve_overtime_request, name='approve_overtime_request'),
+    path('overtime-requests/<int:request_id>/reject/', views.reject_overtime_request, name='reject_overtime_request'),
+    path('overtime-requests/<int:request_id>/approve/', views.approve_overtime_request, name='approve_overtime_request'),
+    path('overtime-requests/<int:request_id>/reject/', views.reject_overtime_request, name='reject_overtime_request'),
+    path('overtime-requests/<int:request_id>/approve-hr/', views.approve_overtime_request_hr, name='approve_overtime_request_hr'),
+    path('overtime-requests/<int:request_id>/reject-hr/', views.reject_overtime_request_hr, name='reject_overtime_request_hr'),
 ]

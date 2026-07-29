@@ -76,11 +76,28 @@
     <ul class="messages"><li class="error">Please fix the highlighted bank detail fields below.</li></ul>
     {% endif %}
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 20px;">
-      <div><label>Account Holder Name</label>{{ bank_form.account_holder_name }}</div>
-      <div><label>Account Number</label>{{ bank_form.account_number }}{% if bank_form.account_number.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ bank_form.account_number.errors.0 }}</p>{% endif %}</div>
-      <div><label>IFSC Code</label>{{ bank_form.ifsc_code }}{% if bank_form.ifsc_code.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ bank_form.ifsc_code.errors.0 }}</p>{% endif %}</div>
-      <div><label>Bank Name</label>{{ bank_form.bank_name }}</div>
-      <div><label>Branch Name</label>{{ bank_form.branch_name }}</div>
+      <div>
+        <label>Account Holder Name</label>
+        {{ bank_form.account_holder_name }}
+      </div>
+      <div>
+        <label>Account Number</label>
+        {{ bank_form.account_number }}
+        {% if bank_form.account_number.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ bank_form.account_number.errors.0 }}</p>{% endif %}
+      </div>
+      <div>
+        <label>IFSC Code</label>
+        {{ bank_form.ifsc_code }}
+        {% if bank_form.ifsc_code.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ bank_form.ifsc_code.errors.0 }}</p>{% endif %}
+      </div>
+      <div>
+        <label>Bank Name</label>
+        {{ bank_form.bank_name }}
+      </div>
+      <div>
+        <label>Branch Name</label>
+        {{ bank_form.branch_name }}
+      </div>
     </div>
   </div>
 

@@ -1,52 +1,90 @@
 {% extends 'core/base.html' %}
 {% block content %}
-<div class="page-header"><h1>My Overtime / Sunday Work Permissions</h1></div>
-
-<div class="card">
-  <p style="color:var(--grey-700); font-size:0.88rem; margin-top:0;">
-    You can only work overtime or on a Sunday if your Manager, Project Lead, or HR has explicitly
-    authorized it for that specific date and project below. Any unauthorized extra hours or Sunday
-    work won't be counted in your attendance or payslip.
-  </p>
+<div class="page-header">
+  <h1>My Overtime / Sunday Work Permissions</h1>
 </div>
 
 <div class="card">
-  <h3>Upcoming / Today</h3>
-  <table>
-    <tr><th>Date</th><th>Project</th><th>Type</th><th>Granted By</th><th>Notes</th></tr>
-    {% for perm in upcoming %}
-    <tr>
-      <td>{{ perm.date }}</td>
-      <td>{{ perm.project.name }}</td>
-      <td>
-        {% if perm.permission_type == 'BOTH' %}<span class="badge badge-success">Overtime + Sunday</span>
-        {% elif perm.permission_type == 'OVERTIME' %}<span class="badge badge-info">Overtime</span>
-        {% else %}<span class="badge badge-warning">Sunday Work</span>{% endif %}
-      </td>
-      <td>{{ perm.authorized_by|default:"-" }}</td>
-      <td>{{ perm.notes|default:"-" }}</td>
-    </tr>
-    {% empty %}<tr><td colspan="5" class="empty-state">No upcoming permissions granted.</td></tr>{% endfor %}
-  </table>
+  <div class="card">
+  {% if not my_projects %}
+  <p class="empty-state">You aren't assigned to any project yet, so you can't submit a request.</p>
+  {% else %}
+  <form method="post" id="ot-request-form">
+    {% csrf_token %}
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 20px;">
+      <div>
+        <label>Project</label>
+        <select name="project" class="form-control" required>
+          <option value="">-- Select project --</option>
+          {% for p in my_projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label>Department</label>
+        <input type="text" class="form-control" value="{{ request.user.department|default:'No Department' }}" readonly style="background:var(--grey-50);">
+      </div>
+      <div><label>Date</label><input type="date" name="date" class="form-control" required></div>
+      <div>
+        <label>Request Type</label>
+        <select name="request_type" class="form-control">
+          <option value="OT">Overtime</option>
+          <option value="SUNDAY">Sunday</option>
+          <option value="HOLIDAY">Holiday</option>
+        </select>
+      </div>
+      <div><label>Start Time</label><input type="time" name="start_time" id="ot-start" class="form-control" required></div>
+      <div><label>End Time</label><input type="time" name="end_time" id="ot-end" class="form-control" required></div>
+      <div><label>Total Hours</label><input type="text" id="ot-total-hours" class="form-control" readonly style="background:var(--grey-50);" value="-"></div>
+    </div>
+    <label>Reason</label>
+    <textarea name="reason" class="form-control" rows="2" placeholder="Why you need to work OT / Sunday / Holiday..."></textarea>
+    <button type="submit" class="btn btn-primary">Submit Request</button>
+  </form>
+  <script>
+    (function () {
+      var startEl = document.getElementById('ot-start');
+      var endEl = document.getElementById('ot-end');
+      var out = document.getElementById('ot-total-hours');
+      function recalc() {
+        if (!startEl.value || !endEl.value) { out.value = '-'; return; }
+        var s = startEl.value.split(':'), e = endEl.value.split(':');
+        var startMin = (+s[0]) * 60 + (+s[1]);
+        var endMin = (+e[0]) * 60 + (+e[1]);
+        var diff = endMin - startMin;
+        if (diff <= 0) diff += 24 * 60; // crosses midnight
+        out.value = (diff / 60).toFixed(2) + ' hrs';
+      }
+      startEl.addEventListener('change', recalc);
+      endEl.addEventListener('change', recalc);
+    })();
+  </script>
+  {% endif %}
 </div>
 
 <div class="card">
-  <h3>Past</h3>
+  <h3>My Requests</h3>
   <table>
-    <tr><th>Date</th><th>Project</th><th>Type</th><th>Granted By</th><th>Notes</th></tr>
-    {% for perm in past %}
+    <tr><th>Date</th><th>Project</th><th>Type</th><th>Hours</th><th>Status</th><th>Manager</th></tr>
+    {% for r in my_requests %}
     <tr>
-      <td>{{ perm.date }}</td>
-      <td>{{ perm.project.name }}</td>
+      <td>{{ r.date }}</td>
+      <td>{{ r.project.name }}</td>
+      <td>{{ r.get_request_type_display }}</td>
+      <td>{{ r.total_hours }}</td>
       <td>
-        {% if perm.permission_type == 'BOTH' %}<span class="badge badge-success">Overtime + Sunday</span>
-        {% elif perm.permission_type == 'OVERTIME' %}<span class="badge badge-info">Overtime</span>
-        {% else %}<span class="badge badge-warning">Sunday Work</span>{% endif %}
+       <td>
+        {% if r.status == 'PENDING_MANAGER' %}<span class="badge badge-warning">Pending Manager</span>
+        {% elif r.status == 'PENDING_HR' %}<span class="badge badge-warning">Pending HR</span>
+        {% elif r.status == 'APPROVED' %}<span class="badge badge-success">Approved</span>
+        {% elif r.status == 'REJECTED_MANAGER' %}<span class="badge badge-danger">Rejected by Manager</span>
+        {% elif r.status == 'REJECTED_HR' %}<span class="badge badge-danger">Rejected by HR</span>{% endif %}
       </td>
-      <td>{{ perm.authorized_by|default:"-" }}</td>
-      <td>{{ perm.notes|default:"-" }}</td>
+      <td style="font-size:0.82rem;">
+        {% if r.reviewed_by_manager %}{{ r.reviewed_by_manager.get_full_name|default:r.reviewed_by_manager.username }}{% if r.manager_comment %}<br><span style="color:var(--grey-500);">"{{ r.manager_comment }}"</span>{% endif %}{% else %}-{% endif %}
+      </td>
     </tr>
-    {% empty %}<tr><td colspan="5" class="empty-state">No past permissions on record.</td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="6" class="empty-state">No requests submitted yet.</td></tr>{% endfor %}
   </table>
 </div>
 {% endblock %}

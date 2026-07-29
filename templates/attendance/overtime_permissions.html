@@ -2,117 +2,112 @@
 {% block content %}
 <div class="page-header"><h1>Overtime & Sunday Work Permissions</h1></div>
 
-{% if not is_admin %}
+{% if is_manager %}
 <div class="card">
-  <h3>Grant Permission</h3>
-  {% if not projects %}
-    <p class="empty-state">You aren't the Manager or Lead of any project yet.</p>
-  {% else %}
-  <form method="post" id="ot-form">
-    {% csrf_token %}
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 20px;">
-      <div>
-        <label>Project</label>
-        <select name="project" id="ot-project" class="form-control" required>
-          <option value="">-- Select project --</option>
-          {% for p in projects %}
-          <option value="{{ p.id }}"
-            data-employees='[
-              {% for a in p.assignments.all %}{"id": {{ a.user_id }}, "name": "{{ a.user.get_full_name|default:a.user.username|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}
-              {% if p.lead_id %}{% if p.assignments.all %},{% endif %}{"id": {{ p.lead_id }}, "name": "{{ p.lead.get_full_name|default:p.lead.username|escapejs }}"}{% endif %}
-            ]'>
-            {{ p.name }} (Manager: {{ p.manager|default:"-" }})
-          </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div>
-        <label>Employee</label>
-        <select name="employee" id="ot-employee" class="form-control" required disabled>
-          <option value="">-- Select project first --</option>
-        </select>
-      </div>
-      <div>
-        <label>Date</label>
-        <input type="date" name="date" class="form-control" required>
-      </div>
-      <div>
-        <label>Permission Type</label>
-        <select name="permission_type" class="form-control">
-          <option value="BOTH">Overtime + Sunday Work</option>
-          <option value="OVERTIME">Overtime only</option>
-          <option value="SUNDAY">Sunday Work only</option>
-        </select>
-      </div>
-    </div>
-    <label>Notes (optional)</label>
-    <textarea name="notes" class="form-control" rows="2"></textarea>
-    <button type="submit" class="btn btn-primary">Grant Permission</button>
-  </form>
-
-  <script>
-    (function () {
-      var projectSelect = document.getElementById('ot-project');
-      var employeeSelect = document.getElementById('ot-employee');
-
-      projectSelect.addEventListener('change', function () {
-        var selectedOption = projectSelect.options[projectSelect.selectedIndex];
-        employeeSelect.innerHTML = '';
-
-        if (!selectedOption || !selectedOption.value) {
-          employeeSelect.disabled = true;
-          employeeSelect.appendChild(new Option('-- Select project first --', ''));
-          return;
-        }
-
-        var employees = [];
-        try {
-          employees = JSON.parse(selectedOption.dataset.employees || '[]');
-        } catch (err) {
-          console.error('Could not parse employees for this project', err);
-        }
-
-        employeeSelect.disabled = false;
-        if (employees.length === 0) {
-          employeeSelect.appendChild(new Option('-- No employees assigned to this project --', ''));
-          return;
-        }
-
-        employeeSelect.appendChild(new Option('-- Select employee --', ''));
-        employees.forEach(function (e) {
-          employeeSelect.appendChild(new Option(e.name, e.id));
-        });
-      });
-    })();
-  </script>
-  {% endif %}
-</div>
-{% endif %}
-
-<div class="card">
-  <h3>{% if is_admin %}Overtime / Sunday Work Records{% else %}Recent Permissions{% endif %}</h3>
+  <h3>Pending Approval</h3>
   <table>
-    <tr><th>Employee</th><th>Project</th><th>Project Manager</th><th>Date</th><th>Type</th><th>Granted By</th><th></th></tr>
-    {% for perm in permissions %}
+    <tr><th>Employee</th><th>Project</th><th>Date</th><th>Type</th><th>Hours</th><th>Reason</th><th></th></tr>
+    {% for r in pending_requests %}
     <tr>
-      <td>{{ perm.employee.get_full_name|default:perm.employee.username }}</td>
-      <td>{{ perm.project.name }}</td>
-      <td>{{ perm.project.manager.get_full_name|default:perm.project.manager.username|default:"-" }}</td>
-      <td>{{ perm.date }}</td>
-      <td>{{ perm.get_permission_type_display }}</td>
-      <td>{{ perm.authorized_by|default:"-" }}</td>
+      <td>{{ r.employee.get_full_name|default:r.employee.username }}</td>
+      <td>{{ r.project.name }}</td>
+      <td>{{ r.date }}</td>
+      <td>{{ r.get_request_type_display }}</td>
+      <td>{{ r.total_hours }}</td>
+      <td>{{ r.reason|default:"-"|truncatewords:12 }}</td>
       <td>
-        {% if is_admin %}
-        <span class="badge badge-info">View only</span>
-        {% else %}
-        <form method="post" action="{% url 'attendance:revoke_overtime_permission' perm.id %}" style="margin:0;">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-outline btn-sm">Revoke</button>
+        <form method="post" action="{% url 'attendance:approve_overtime_request' r.id %}" style="display:inline;">
+          {% csrf_token %}<button type="submit" class="btn btn-primary btn-sm">Approve</button>
         </form>
+        <form method="post" action="{% url 'attendance:reject_overtime_request' r.id %}" style="display:inline;">
+          {% csrf_token %}<button type="submit" class="btn btn-outline btn-sm">Reject</button>
+        </form>
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="7" class="empty-state">No pending requests.</td></tr>{% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h3>Your Team's Request History</h3>
+  <table>
+    <tr><th>Employee</th><th>Project</th><th>Date</th><th>Type</th><th>Hours</th><th>Status</th><th>Reviewed</th></tr>
+    {% for r in request_history %}
+    <tr>
+      <td>{{ r.employee.get_full_name|default:r.employee.username }}</td>
+      <td>{{ r.project.name }}</td>
+      <td>{{ r.date }}</td>
+      <td>{{ r.get_request_type_display }}</td>
+      <td>{{ r.total_hours }}</td>
+      <td>
+        {% if r.status == 'APPROVED' %}<span class="badge badge-success">Approved</span>
+        {% elif r.status == 'REJECTED_MANAGER' %}<span class="badge badge-danger">Rejected</span>{% endif %}
+      </td>
+      <td style="font-size:0.8rem; color:var(--grey-500);">{{ r.manager_reviewed_at|date:"d M Y, h:i A" }}</td>
+    </tr>
+    {% empty %}<tr><td colspan="7" class="empty-state">No history yet.</td></tr>{% endfor %}
+  </table>
+</div>
+
+{% else %}
+<div class="card">
+  <h3>Pending Your Approval</h3>
+  <table>
+    <tr><th>Employee</th><th>Project</th><th>Date</th><th>Type</th><th>Hours</th><th>Reason</th><th></th></tr>
+    {% for r in pending_hr_requests %}
+    <tr>
+      <td>{{ r.employee.get_full_name|default:r.employee.username }}</td>
+      <td>{{ r.project.name }}</td>
+      <td>{{ r.date }}</td>
+      <td>{{ r.get_request_type_display }}</td>
+      <td>{{ r.total_hours }}</td>
+      <td>{{ r.reason|default:"-"|truncatewords:12 }}</td>
+      <td>
+        {% if is_hr %}
+        <form method="post" action="{% url 'attendance:approve_overtime_request_hr' r.id %}" style="display:inline;">
+          {% csrf_token %}<button type="submit" class="btn btn-primary btn-sm">Approve</button>
+        </form>
+        <form method="post" action="{% url 'attendance:reject_overtime_request_hr' r.id %}" style="display:inline;">
+          {% csrf_token %}<button type="submit" class="btn btn-outline btn-sm">Reject</button>
+        </form>
+        {% else %}
+        <span class="badge badge-info">View only</span>
         {% endif %}
       </td>
     </tr>
-    {% empty %}<tr><td colspan="7" class="empty-state">No permissions {% if is_admin %}recorded{% else %}granted{% endif %} yet.</td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="7" class="empty-state">No requests pending your approval.</td></tr>{% endfor %}
   </table>
 </div>
+
+<div class="card">
+  <table>
+    <tr><th>Employee</th><th>Project</th><th>Date</th><th>Type</th><th>Hours</th><th>Reason</th><th>Approved By</th><th>Status</th></tr>
+    {% for r in request_history %}
+    <tr>
+      <td>{{ r.employee.get_full_name|default:r.employee.username }}</td>
+      <td>{{ r.project.name }}</td>
+      <td>{{ r.date }}</td>
+      <td>{{ r.get_request_type_display }}</td>
+      <td>{{ r.total_hours }}</td>
+      <td>{{ r.reason|default:"-"|truncatewords:12 }}</td>
+      <td>
+        {% if r.reviewed_by_manager %}
+          {{ r.reviewed_by_manager.get_full_name|default:r.reviewed_by_manager.username }}
+          <br><span style="font-size:0.75rem; color:var(--grey-500);">{{ r.manager_reviewed_at|date:"d M Y, h:i A" }} (Manager)</span>
+        {% elif r.reviewed_by_hr %}
+          {{ r.reviewed_by_hr.get_full_name|default:r.reviewed_by_hr.username }}
+          <br><span style="font-size:0.75rem; color:var(--grey-500);">{{ r.hr_reviewed_at|date:"d M Y, h:i A" }} (HR)</span>
+        {% else %}-{% endif %}
+      </td>
+      <td>
+        {% if r.status == 'APPROVED' %}<span class="badge badge-success">Approved</span>
+        {% elif r.status == 'REJECTED_MANAGER' %}<span class="badge badge-danger">Rejected by Manager</span>
+        {% elif r.status == 'REJECTED_HR' %}<span class="badge badge-danger">Rejected by HR</span>
+        {% else %}<span class="badge badge-warning">Pending Manager</span>{% endif %}
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="8" class="empty-state">No requests found.</td></tr>{% endfor %}
+  </table>
+</div>
+{% endif %}
 {% endblock %}

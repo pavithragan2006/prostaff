@@ -62,18 +62,19 @@
       <div><label>Email</label>{{ form.email }}{% if form.email.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ form.email.errors.0 }}</p>{% endif %}</div>
       <div><label>Department</label>{{ form.department }}</div>
       {% if emp_user.role == 'HR' %}
+      <div><label>Home Branch</label>{{ form.branch }}</div>
       <div style="grid-column:1 / -1; margin-bottom:14px;">
-        <label>Branch Access</label>
-        <p style="color:var(--grey-500); font-size:0.8rem; margin-top:-4px;">Select every branch this HR user can view and manage.</p>
-        <div class="branch-checkbox-grid">
-          {% for checkbox in form.accessible_branches %}
-          <label class="branch-checkbox">{{ checkbox.tag }} {{ checkbox.choice_label }}</label>
-          {% endfor %}
+          <label>Branch Access</label>
+          <p style="color:var(--grey-500); font-size:0.8rem; margin-top:-4px;">Select every branch this HR user can view and manage.</p>
+          <div class="branch-checkbox-grid">
+            {% for checkbox in form.accessible_branches %}
+            <label class="branch-checkbox">{{ checkbox.tag }} {{ checkbox.choice_label }}</label>
+            {% endfor %}
+          </div>
         </div>
-      </div>
-      {% else %}
-      <div><label>Branch</label>{{ form.branch }}</div>
-      {% endif %}
+        {% else %}
+        <div><label>Branch</label>{{ form.branch }}</div>
+        {% endif %}
 
       
       <div><label>Phone</label>
@@ -247,4 +248,39 @@
     <button type="submit" class="btn btn-accent" style="margin-bottom:14px;">Upload</button>
   </form>
 </div>
+<script>
+(function () {
+  var branchSelect = document.querySelector('#main-profile-form select[name="branch"]');
+  var deptSelect = document.querySelector('#main-profile-form select[name="department"]');
+  if (!branchSelect || !deptSelect) return;
+
+  var allOptions = Array.prototype.slice.call(deptSelect.options);
+
+  function filterDepartments() {
+    var branchId = branchSelect.value;
+    var currentValue = deptSelect.value;
+    deptSelect.innerHTML = '';
+
+    allOptions.forEach(function (opt) {
+      var optBranch = opt.getAttribute('data-branch');
+      // Keep the blank "---------" option and any option matching the
+      // currently selected branch.
+      if (!opt.value || !optBranch || optBranch === branchId) {
+        deptSelect.appendChild(opt);
+      }
+    });
+
+    // Restore selection if it's still a valid option after filtering;
+    // otherwise fall back to blank so a stale cross-branch value can't
+    // silently stay selected.
+    var stillValid = Array.prototype.some.call(deptSelect.options, function (o) {
+      return o.value === currentValue;
+    });
+    deptSelect.value = stillValid ? currentValue : '';
+  }
+
+  branchSelect.addEventListener('change', filterDepartments);
+  filterDepartments(); // run once on page load to match the initial branch
+})();
+</script>
 {% endblock %}

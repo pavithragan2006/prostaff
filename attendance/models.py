@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import datetime, time, date, timedelta
 from django.db import models
 from django.conf import settings
 from django.utils import timezone as dj_timezone
@@ -125,3 +125,99 @@ class OvertimePermission(models.Model):
 
     def __str__(self):
         return f"{self.employee} — {self.project} — {self.date} ({self.get_permission_type_display()})"
+
+
+class OvertimeRequest(models.Model):
+    """Employee-initiated OT / Sunday / Holiday request. Routed to the
+    employee's department Manager first, then to HR for final verification."""
+
+    TYPE_OT = 'OT'
+    TYPE_SUNDAY = 'SUNDAY'
+    TYPE_HOLIDAY = 'HOLIDAY'
+    TYPE_CHOICES = [
+        (TYPE_OT, 'Overtime'),
+        (TYPE_SUNDAY, 'Sunday'),
+        (TYPE_HOLIDAY, 'Holiday'),
+    ]
+
+    STATUS_CHOICES = [
+        ('PENDING_MANAGER', 'Pending Manager Approval'),
+        ('PENDING_HR', 'Pending HR Approval'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED_MANAGER', 'Rejected by Manager'),
+        ('REJECTED_HR', 'Rejected by HR'),
+    ]
+
+    employee = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='overtime_requests')
+    project = models.ForeignKey('projects.Project', on_delete=models.CASCADE, related_name='overtime_requests')
+    department = models.ForeignKey('core.Department', null=True, blank=True, on_delete=models.SET_NULL, related_name='overtime_requests')
+    date = models.DateField()
+    request_type = models.CharField(max_length=10, choices=TYPE_CHOICES, default=TYPE_OT)
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    total_hours = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    reason = models.TextField(blank=True)
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING_MANAGER')
+    submitted_at = models.DateTimeField(auto_now_add=True)
+
+    reviewed_by_manager = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='overtime_requests_manager_reviewed')
+    manager_reviewed_at = models.DateTimeField(null=True, blank=True)
+    manager_comment = models.CharField(max_length=255, blank=True)
+
+    reviewed_by_hr = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='overtime_requests_hr_reviewed')
+    hr_reviewed_at = models.DateTimeField(null=True, blank=True)
+    hr_comment = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ['-submitted_at']
+
+    def save(self, *args, **kwargs):
+        if self.start_time and self.end_time:
+            base_date = self.date or date.today()
+            start_dt = datetime.combine(base_date, self.start_time)
+            end_dt = datetime.combine(base_date, self.end_time)
+            if end_dt <= start_dt:
+                end_dt += timedelta(days=1)  # crosses midnight
+            self.total_hours = round((end_dt - start_dt).total_seconds() / 3600, 2)
+        super().save(*args, **kwargs)
+
+    def get_manager(self):
+        dept = self.department or self.employee.department
+        if not dept or not dept.manager_id or dept.manager_id == self.employee_id:
+            return None
+        manager = dept.manager
+        if manager.branch_id != self.employee.branch_id:
+            return None
+        return manager
+
+    def approve_by_manager(self, manager, comment=''):
+        self.status = 'APPROVED'
+        self.reviewed_by_manager = manager
+        self.manager_reviewed_at = dj_timezone.now()
+        self.manager_comment = comment
+        self.save()
+
+    def reject_by_manager(self, manager, comment=''):
+        self.status = 'REJECTED_MANAGER'
+        self.reviewed_by_manager = manager
+        self.manager_reviewed_at = dj_timezone.now()
+        self.manager_comment = comment
+        self.save()
+
+    def approve_by_hr(self, hr_user, comment=''):
+        self.status = 'APPROVED'
+        self.reviewed_by_hr = hr_user
+        self.hr_reviewed_at = dj_timezone.now()
+        self.hr_comment = comment
+        self.save()
+
+    def reject_by_hr(self, hr_user, comment=''):
+        self.status = 'REJECTED_HR'
+        self.reviewed_by_hr = hr_user
+        self.hr_reviewed_at = dj_timezone.now()
+        self.hr_comment = comment
+        self.save()
+
+    def __str__(self):
+        return f"{self.employee} - {self.date} ({self.get_request_type_display()}, {self.status})"

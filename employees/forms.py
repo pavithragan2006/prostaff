@@ -6,7 +6,7 @@ from core.validators import (
 )
 from employees.models import EmployeeProfile, EmployeeDocument, ResignationRequest, BankDetail
 from core.models import User
-from core.models import Branch 
+from core.models import Branch , Department 
 
 
 NAME_ATTRS = {
@@ -123,6 +123,30 @@ class EmployeeSelfEditForm(forms.ModelForm):
                 self.user_instance.save()
         return profile
 
+
+
+
+class DepartmentSelect(forms.Select):
+    """Tags each <option> with data-branch=<branch id> so the edit-profile
+    page's JS can show only departments belonging to whichever Branch is
+    currently selected in the Branch dropdown on the same form."""
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex, attrs)
+        if value:
+            dept = Department.objects.filter(pk=value.value if hasattr(value, 'value') else value).select_related('branch').first()
+            if dept and dept.branch_id:
+                option['attrs']['data-branch'] = str(dept.branch_id)
+        return option
+
+
+class BranchAwareDepartmentField(forms.ModelChoiceField):
+    """Displays only the department name — no branch code suffix. The
+    branch code was only there because department names repeat across
+    branches (unique_together = ('name','branch')); JS-based filtering by
+    the selected Branch handles disambiguation instead."""
+    def label_from_instance(self, obj):
+        return obj.name
+
 class NewEmployeeForm(forms.ModelForm):
     """Used by HR to onboard a new employee (creates the User).
     Employee ID / Enrollment ID are auto-generated from the branch at save
@@ -132,6 +156,11 @@ class NewEmployeeForm(forms.ModelForm):
     last_name = forms.CharField(max_length=150, required=False, validators=[name_validator], widget=forms.TextInput(attrs=NAME_ATTRS))
     phone_country_code = forms.ChoiceField(choices=COUNTRY_CODES, required=False, widget=forms.Select(attrs=COUNTRY_CODE_ATTRS))
     phone = forms.CharField(max_length=10, required=False, validators=[phone_validator], widget=forms.TextInput(attrs=PHONE_ATTRS))
+    department = BranchAwareDepartmentField(
+        queryset=Department.objects.all().select_related('branch').order_by('branch__code', 'name'),
+        required=False,
+        widget=DepartmentSelect(attrs={'class': 'form-control'}),
+    )
 
     class Meta:
         model = User
@@ -162,7 +191,7 @@ class HREmployeeEditForm(forms.ModelForm):
     last_name = forms.CharField(max_length=150, required=False, validators=[name_validator], widget=forms.TextInput(attrs=NAME_ATTRS))
     phone_country_code = forms.ChoiceField(choices=COUNTRY_CODES, required=False, widget=forms.Select(attrs=COUNTRY_CODE_ATTRS))
     phone = forms.CharField(max_length=10, required=False, validators=[phone_validator], widget=forms.TextInput(attrs=PHONE_ATTRS))
-    # employee_id removed — it's handled manually via employee_id_suffix in the view
+    employee_id = forms.CharField(max_length=20, required=False, validators=[alnum_id_validator], widget=forms.TextInput(attrs={**ID_ATTRS, 'readonly': 'readonly'}))
     accessible_branches = forms.ModelMultipleChoiceField(
         queryset=Branch.objects.all().order_by('code'),
         required=False,
@@ -170,10 +199,15 @@ class HREmployeeEditForm(forms.ModelForm):
         label="Branch Access",
         help_text="Select every branch this HR user can view and manage.",
     )
+    department = BranchAwareDepartmentField(
+        queryset=Department.objects.all().select_related('branch').order_by('branch__code', 'name'),
+        required=False,
+        widget=DepartmentSelect(attrs={'class': 'form-control'}),
+    )
 
     class Meta:
         model = User
-        fields = ['first_name', 'last_name', 'email', 'department', 'branch', 'date_joined_company', 'phone_country_code', 'phone']
+        fields = ['first_name', 'last_name', 'email', 'employee_id', 'department', 'branch', 'date_joined_company', 'phone_country_code', 'phone']
         widgets = {'date_joined_company': forms.DateInput(attrs={'type': 'date'})}
 
     def __init__(self, *args, **kwargs):
@@ -183,6 +217,7 @@ class HREmployeeEditForm(forms.ModelForm):
                 field.widget.attrs.setdefault('class', 'form-control')
         if self.instance and self.instance.pk:
             self.fields['accessible_branches'].initial = self.instance.accessible_branches.all()
+
             
 class EmployeeIdentityForm(forms.ModelForm):
     """Extended identity / HR fields. Only ever reachable by HR, Admin, or
@@ -238,7 +273,7 @@ class EmployeeIdentityForm(forms.ModelForm):
 
 
 class BankDetailForm(forms.ModelForm):
-    """Bank/salary account details — HR/Admin/Manager editable only."""
+    """Bank/salary account details."""
     account_number = forms.CharField(max_length=18, required=False, validators=[bank_account_validator], widget=forms.TextInput(attrs=BANK_ATTRS))
     ifsc_code = forms.CharField(max_length=11, required=False, validators=[ifsc_validator], widget=forms.TextInput(attrs=IFSC_ATTRS))
     account_holder_name = forms.CharField(max_length=150, required=False, validators=[name_validator], widget=forms.TextInput(attrs=NAME_ATTRS))
@@ -254,7 +289,6 @@ class BankDetailForm(forms.ModelForm):
 
     def clean_ifsc_code(self):
         return self.cleaned_data.get('ifsc_code', '').upper()
-
 
 class HRDocumentForm(forms.ModelForm):
     """HR can only upload official, company-issued letters — never an
@@ -326,9 +360,32 @@ class OnboardHRForm(forms.ModelForm):
     last_name = forms.CharField(max_length=150, required=False, validators=[name_validator], widget=forms.TextInput(attrs=NAME_ATTRS))
     phone_country_code = forms.ChoiceField(choices=COUNTRY_CODES, required=False, widget=forms.Select(attrs=COUNTRY_CODE_ATTRS))
     phone = forms.CharField(max_length=10, required=False, validators=[phone_validator], widget=forms.TextInput(attrs=PHONE_ATTRS))
-    role = forms.ChoiceField(choices=User.ROLE_CHOICES, required=True)
 
-    branch = forms.ModelChoiceField(queryset=Branch.objects.all().order_by('code'), required=False, label="Branch")
+    # Employee added alongside Admin/HR — same page now handles all three,
+    # each with its own branch-assignment mode below.
+    role = forms.ChoiceField(
+        choices=[
+            (User.ROLE_EMPLOYEE, 'Employee'),
+            (User.ROLE_HR, 'HR'),
+            (User.ROLE_ADMIN, 'Admin'),
+        ],
+        required=True,
+    )
+
+    department = BranchAwareDepartmentField(
+        queryset=Department.objects.all().select_related('branch').order_by('branch__code', 'name'),
+        required=False,
+        widget=DepartmentSelect(attrs={'class': 'form-control'}),
+    )
+
+    # Single-branch field — only used/required when role == EMPLOYEE.
+    branch = forms.ModelChoiceField(
+        queryset=Branch.objects.all().order_by('code'),
+        required=False,
+        label="Branch",
+    )
+
+    # Multi-branch field — only used/required when role == HR or ADMIN.
     accessible_branches = forms.ModelMultipleChoiceField(
         queryset=Branch.objects.all().order_by('code'),
         required=False,
@@ -354,10 +411,10 @@ class OnboardHRForm(forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         role = cleaned.get('role')
-        if role in (User.ROLE_EMPLOYEE, User.ROLE_MANAGER):
+        if role == User.ROLE_EMPLOYEE:
             if not cleaned.get('branch'):
-                self.add_error('branch', "Select a branch for this role.")
-        elif role == User.ROLE_HR:
+                self.add_error('branch', "Select a branch for this employee.")
+        elif role in (User.ROLE_HR, User.ROLE_ADMIN):
             if not cleaned.get('accessible_branches'):
-                self.add_error('accessible_branches', "Select at least one branch this HR user can access.")
+                self.add_error('accessible_branches', "Select at least one branch this user can access.")
         return cleaned
