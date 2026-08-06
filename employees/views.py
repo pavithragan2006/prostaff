@@ -1,21 +1,20 @@
-from urllib import request
-
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q
 from django.utils import timezone
-from increments.models import IncrementRequest
-from core.decorators import admin_only_required
+from django.urls import reverse
 
-from core.decorators import hr_or_admin_required, hr_only_required, hr_admin_or_manager_required
+from core.decorators import admin_only_required, hr_or_admin_required, hr_only_required, hr_admin_or_manager_required, role_required
 from core.models import User
+from core.utils import get_active_branch, user_can_switch_branch
+
 from attendance.models import AttendanceRecord
 from employees.models import EmployeeProfile, EmployeeDocument, ResignationRequest, BankDetail
 from employees.forms import (
     EmployeeSelfEditForm, NewEmployeeForm, HRDocumentForm, SelfDocumentForm,
     RoleChangeForm, ResignationRequestForm, HREmployeeEditForm,
-    EmployeeIdentityForm, BankDetailForm,
+    EmployeeIdentityForm, BankDetailForm, OnboardHRForm,
 )
 from employees.id_utils import (
     generate_enrollment_id, generate_employee_id,
@@ -23,12 +22,7 @@ from employees.id_utils import (
 )
 from payroll.models import SalaryStructure
 from payroll.forms import SalaryStructureForm
-from django.urls import reverse
-from payroll.models import SalaryStructure
 from increments.models import IncrementRequest
-from core.utils import get_active_branch, user_can_switch_branch
-from core.decorators import role_required
-from employees.forms import OnboardHRForm
 
 
 def _present_user_ids_today():
@@ -41,7 +35,7 @@ def _present_user_ids_today():
 def _can_apply_resignation(user):
     # HR can resign too — but their resignation is reviewed by Admin, not
     # by another HR colleague. Admin itself never applies for resignation.
-    return user.role in ('EMPLOYEE', 'MANAGER', 'HR')
+    return user.role in ('EMPLOYEE', 'MANAGER', 'HR', 'ADMIN')
 
 
 def _can_review_resignation(acting_user, resignation):
@@ -53,9 +47,8 @@ def _can_review_resignation(acting_user, resignation):
 
 
 def _can_edit_identity(acting_user, emp_user):
-    """HR and Admin can edit anyone (except HR can't touch other HR/Admin
-    role changes elsewhere — unrelated to this). A Manager can only edit
-    members of their own department, and never themselves."""
+    """HR and Admin can edit anyone. A Manager can only edit members of
+    their own department, and never themselves."""
     if acting_user.role in ('HR', 'ADMIN'):
         return True
     if acting_user.is_manager():
@@ -75,6 +68,7 @@ def _department_sort_key(dept_name):
         priority = 2
     return (priority, lower)
 
+
 ROLE_WITHIN_DEPT_PRIORITY = {'MANAGER': 0, 'EMPLOYEE': 1}
 
 
@@ -82,9 +76,7 @@ def _directory_sort_key(emp):
     """HR first (alphabetical, no department grouping). Everyone else is
     grouped by department first (Data Entry, then Software, then the rest
     alphabetically) — and within each department, the Manager appears
-    before that department's Employees, alphabetical within each group.
-    Reads emp.role fresh each time, so a promotion/demotion automatically
-    moves someone into the right spot without any extra bookkeeping."""
+    before that department's Employees, alphabetical within each group."""
     name = (emp.first_name or emp.username).lower()
 
     if emp.role == 'HR':
@@ -93,11 +85,14 @@ def _directory_sort_key(emp):
     dept_key = _department_sort_key(emp.department.name if emp.department else 'zzz_no_department')
     role_within_dept = ROLE_WITHIN_DEPT_PRIORITY.get(emp.role, 2)
     return (1, dept_key, role_within_dept, name)
+
+
 BRANCH_ORDER = ['B01', 'B02', 'B03', 'B04']
 
+
 def _primary_branch(branches):
-    """Picks the 'home' branch for an HR user out of their selected
-    accessible branches — lowest branch code wins (Chennai first)."""
+    """Picks the 'home' branch for an HR/Admin/COO user out of their
+    selected accessible branches — lowest branch code wins (Chennai first)."""
     branches = list(branches)
     if not branches:
         return None
@@ -119,7 +114,8 @@ def my_profile(request):
         'can_apply_resignation': _can_apply_resignation(request.user),
         'pending_resignation': pending_resignation,
     })
-@login_required
+
+
 @login_required
 def edit_my_profile(request):
     """Employee's own edit page — separate from the read-only my_profile
@@ -164,90 +160,6 @@ def edit_my_profile(request):
         'bank_detail': bank_detail,
     })
 
-@hr_admin_or_manager_required
-def edit_employee_profile(request, user_id):
-    emp_user = get_object_or_404(User, id=user_id)
-
-    if not _can_edit_identity(request.user, emp_user):
-        messages.error(request, "You do not have permission to edit this profile.")
-        return redirect('employees:employee_detail', user_id=emp_user.id)
-
-    profile, _ = EmployeeProfile.objects.get_or_create(user=emp_user)
-    bank_detail, _ = BankDetail.objects.get_or_create(user=emp_user)
-
-    employee_id_prefix = employee_id_prefix_for_branch(emp_user.branch)
-    enrollment_prefix = enrollment_prefix_for_branch(emp_user.branch)
-
-    if request.method == 'POST':
-        form = HREmployeeEditForm(request.POST, instance=emp_user)
-        identity_form = EmployeeIdentityForm(request.POST, request.FILES, instance=profile)
-        bank_form = BankDetailForm(request.POST, instance=bank_detail)
-
-        enrollment_suffix = request.POST.get('enrollment_suffix', '').strip()
-        employee_id_suffix = request.POST.get('employee_id_suffix', '').strip()
-
-        saved_anything = False
-        all_valid = True
-
-        if form.is_valid():
-            user_obj = form.save(commit=False)
-            if employee_id_suffix:
-                user_obj.employee_id = f"{employee_id_prefix}{employee_id_suffix}"
-            user_obj.save()
-            if emp_user.role == 'HR':
-                user_obj.accessible_branches.set(form.cleaned_data.get('accessible_branches'))
-            saved_anything = True
-        else:
-            all_valid = False
-            messages.error(request, "Some basic profile fields need fixing — see below.")
-
-        if identity_form.is_valid():
-            profile_obj = identity_form.save(commit=False)
-            if enrollment_suffix:
-                profile_obj.enrollment_id = f"{enrollment_prefix}{enrollment_suffix}"
-            profile_obj.save()
-            saved_anything = True
-        else:
-            all_valid = False
-            messages.error(request, "Some identity fields need fixing — see below.")
-
-        if bank_form.is_valid():
-            bank_form.save()
-            saved_anything = True
-        else:
-            all_valid = False
-            messages.error(request, "Some bank details need fixing — see below.")
-
-        if saved_anything:
-            messages.success(request, f"{emp_user}'s profile has been updated.")
-
-        # Only redirect (clearing the form) once everything validated.
-        # Otherwise fall through and re-render with the bound forms so
-        # the person can see exactly which field(s) are the problem.
-        if all_valid:
-            return redirect('employees:edit_employee_profile', user_id=emp_user.id)
-    else:
-        form = HREmployeeEditForm(instance=emp_user)
-        identity_form = EmployeeIdentityForm(instance=profile)
-        bank_form = BankDetailForm(instance=bank_detail)
-
-    documents = emp_user.documents.all()
-    doc_form = HRDocumentForm()
-    role_form = RoleChangeForm(instance=emp_user, acting_user=request.user)
-    salary_structure, _ = SalaryStructure.objects.get_or_create(user=emp_user, defaults={'basic': 0})
-    salary_form = SalaryStructureForm(instance=salary_structure)
-
-    return render(request, 'employees/edit_employee_profile.html', {
-        'emp_user': emp_user, 'form': form, 'identity_form': identity_form, 'bank_form': bank_form,
-        'documents': documents, 'doc_form': doc_form, 'role_form': role_form,
-        'profile': profile, 'bank_detail': bank_detail, 'salary_form': salary_form,
-        'is_admin_viewer': request.user.role == 'ADMIN',
-        'can_change_role': request.user.role == 'HR',
-        'enrollment_prefix': enrollment_prefix,
-        'employee_id_prefix': employee_id_prefix,
-        'enrollment_suffix': request.POST.get('enrollment_suffix', split_id(profile.enrollment_id, enrollment_prefix)),
-        'employee_id_suffix': request.POST.get('employee_id_suffix', split_id(emp_user.employee_id, employee_id_prefix)),
-    })
 
 @login_required
 def upload_own_document(request):
@@ -326,8 +238,6 @@ def approve_resignation(request, resignation_id):
             return redirect('employees:resignation_list')
 
         # approve() sets profile.status='EXITED', exit_date and exit_reason.
-        # The employee immediately shows up as Exited in the HR/Admin
-        # directory (and to their Manager, on their team page).
         resignation.approve(hr_user=request.user, notice_period_days=days)
         messages.success(
             request,
@@ -391,11 +301,12 @@ def quit_after_negotiation(request, resignation_id):
         messages.success(request, "Your response has been sent to HR. They'll confirm your notice period shortly.")
     return redirect('employees:my_profile')
 
+
 @hr_only_required
 def onboard_employee(request):
     active_branch = get_active_branch(request)
     if request.method == 'POST':
-        form = NewEmployeeForm(request.POST)
+        form = NewEmployeeForm(request.POST, acting_user=request.user)
         if form.is_valid():
             user = form.save(commit=False)
             if not user_can_switch_branch(request.user):
@@ -406,25 +317,22 @@ def onboard_employee(request):
                 user.manager = department.manager
             else:
                 user.manager = None
-
-            # Auto-generate the branch-prefixed Employee ID (SPSB0#-####).
             user.employee_id = generate_employee_id(user.branch)
             user.save()
-
             profile = EmployeeProfile.objects.create(user=user, status='ONBOARDING')
-            # Auto-generate the branch-prefixed Enrollment ID (TRB0#-####).
             profile.enrollment_id = generate_enrollment_id(user.branch)
             profile.save()
             BankDetail.objects.get_or_create(user=user)
-
             messages.success(request, f'{user} onboarded successfully (Employee ID {user.employee_id}, Enrollment ID {profile.enrollment_id}). Share their login credentials securely.')
             return redirect('employees:employee_detail', user_id=user.id)
     else:
         initial = {}
         if active_branch and not user_can_switch_branch(request.user):
             initial['branch'] = active_branch.id
-        form = NewEmployeeForm(initial=initial)
+        form = NewEmployeeForm(initial=initial, acting_user=request.user)
+
     return render(request, 'employees/onboard.html', {'form': form, 'locked_branch': not user_can_switch_branch(request.user)})
+
 
 @role_required('ADMIN')
 def toggle_branch_admin_access(request, user_id):
@@ -445,15 +353,10 @@ def employee_directory(request):
 
     employees = User.objects.exclude(id=request.user.id).select_related('department', 'profile')
 
-    # FIX: active_branch must always be computed, not just inside the
-    # `if request.user.role == 'HR':` branch — otherwise Admin (or any
-    # other role reaching this view) hits UnboundLocalError below.
     active_branch = get_active_branch(request)
 
     if request.user.role == 'HR':
         employees = employees.exclude(role='ADMIN')
-
-    active_branch = get_active_branch(request)
 
     if active_branch:
         employees = employees.filter(Q(branch=active_branch) | Q(role='ADMIN')).distinct()
@@ -486,9 +389,6 @@ def employee_directory(request):
     has_no_dept = base_qs.filter(department__isnull=True).exists()
     departments = dept_names + (['No Department'] if has_no_dept else [])
 
-    # Exited employees are always included here (no status exclusion above
-    # other than ONBOARDING for the department-list computation) — HR and
-    # Admin can always see who's exited, filterable via the Status dropdown.
     employee_rows = []
     for emp in employees:
         profile = getattr(emp, 'profile', None)
@@ -513,12 +413,12 @@ def employee_directory(request):
         'selected_department': department_filter,
         'selected_status': status_filter,
     })
+
+
 @hr_admin_or_manager_required
 def employee_detail(request, user_id):
     """HR/Admin/Manager view. Read-only by default. HR/Admin/the employee's
-    Manager can toggle Edit mode (?edit=1). Admin never edits anywhere else
-    in the system, but per the HR identity-data policy Admin *can* edit the
-    extended identity/bank fields from here, same as HR and Manager."""
+    Manager can toggle Edit mode (?edit=1)."""
     emp_user = get_object_or_404(User, id=user_id)
 
     if request.user.role == 'HR' and emp_user.role == 'ADMIN':
@@ -536,7 +436,7 @@ def employee_detail(request, user_id):
     doc_form = HRDocumentForm()
     role_form = RoleChangeForm(instance=emp_user, acting_user=request.user)
     latest_resignation = ResignationRequest.objects.filter(user=emp_user).first()
-    can_review_resignation = _can_review_resignation(request.user, latest_resignation) if latest_resignation else False  # NEW
+    can_review_resignation = _can_review_resignation(request.user, latest_resignation) if latest_resignation else False
 
     salary_structure = SalaryStructure.objects.filter(user=emp_user).first()
 
@@ -551,7 +451,7 @@ def employee_detail(request, user_id):
         'emp_user': emp_user, 'profile': profile, 'bank_detail': bank_detail,
         'documents': documents, 'doc_form': doc_form,
         'role_form': role_form, 'latest_resignation': latest_resignation,
-        'can_review_resignation': can_review_resignation,  # NEW
+        'can_review_resignation': can_review_resignation,
         'salary_structure': salary_structure,
         'increment_count': increment_count, 'latest_increment': latest_increment,
         'edit_mode': edit_mode, 'can_edit_identity': can_edit_identity,
@@ -563,8 +463,7 @@ def update_employee_status(request, user_id):
     """HR moves any employee between Onboarding, Active, and Exited.
     Admin can only do this for HR accounts specifically. Moving
     EXITED -> ACTIVE (a rejoin) automatically preserves their prior
-    joining date in old_joining_date so it isn't lost once
-    date_joined_company is updated for the new stint."""
+    joining date in old_joining_date."""
     emp_user = get_object_or_404(User, id=user_id)
 
     is_authorized = (
@@ -588,6 +487,8 @@ def update_employee_status(request, user_id):
         else:
             messages.error(request, "Invalid status selected.")
     return redirect('employees:edit_employee_profile', user_id=emp_user.id)
+
+
 @hr_only_required
 def upload_document(request, user_id):
     emp_user = get_object_or_404(User, id=user_id)
@@ -604,8 +505,7 @@ def upload_document(request, user_id):
 
 @hr_only_required
 def delete_document(request, user_id, doc_id):
-    """HR removes a document from an employee's profile (official letters
-    HR uploaded, or personal documents the employee uploaded themselves)."""
+    """HR removes a document from an employee's profile."""
     emp_user = get_object_or_404(User, id=user_id)
     doc = get_object_or_404(EmployeeDocument, id=doc_id, user=emp_user)
     if request.method == 'POST':
@@ -625,8 +525,6 @@ def edit_employee_profile(request, user_id):
     profile, _ = EmployeeProfile.objects.get_or_create(user=emp_user)
     bank_detail, _ = BankDetail.objects.get_or_create(user=emp_user)
 
-    # Initial prefixes for GET rendering (and as a fallback if the POST
-    # branch below never actually changes branch).
     employee_id_prefix = employee_id_prefix_for_branch(emp_user.branch)
     enrollment_prefix = enrollment_prefix_for_branch(emp_user.branch)
 
@@ -640,22 +538,19 @@ def edit_employee_profile(request, user_id):
 
         saved_anything = False
 
+        # Each form is validated and saved on its own — one section having
+        # no changes (or being left blank) never blocks another section
+        # from saving.
         if form.is_valid():
             user_obj = form.save(commit=False)
             if emp_user.role == 'HR':
-                user_obj.branch = emp_user.branch
+                user_obj.branch = emp_user.branch  # HR branch is admin-set, not editable here
 
-            # Branch may have just changed (non-HR roles only — HR's
-            # branch is admin-set separately and locked above). Recompute
-            # the prefixes AFTER the branch is set on user_obj so the ID
-            # generated below always matches the branch being saved,
-            # not the branch this person was on before this submit.
-            employee_id_prefix = employee_id_prefix_for_branch(user_obj.branch)
-            enrollment_prefix = enrollment_prefix_for_branch(user_obj.branch)
+            current_employee_id_prefix = employee_id_prefix_for_branch(user_obj.branch)
+            current_enrollment_prefix = enrollment_prefix_for_branch(user_obj.branch)
 
             if employee_id_suffix:
-                user_obj.employee_id = f"{employee_id_prefix}{employee_id_suffix}"
-            user_obj.save()
+                user_obj.employee_id = f"{current_employee_id_prefix}{employee_id_suffix}"
 
             if user_obj.role != User.ROLE_MANAGER:
                 dept = form.cleaned_data.get('department')
@@ -664,6 +559,9 @@ def edit_employee_profile(request, user_id):
             user_obj.save()
             if emp_user.role == 'HR':
                 user_obj.accessible_branches.set(form.cleaned_data.get('accessible_branches'))
+
+            employee_id_prefix = current_employee_id_prefix
+            enrollment_prefix = current_enrollment_prefix
             saved_anything = True
         else:
             messages.error(request, "Some basic profile fields need fixing — those weren't saved.")
@@ -676,13 +574,6 @@ def edit_employee_profile(request, user_id):
             saved_anything = True
         else:
             messages.error(request, "Some identity fields need fixing — those weren't saved.")
-
-        saved_anything = False
-        if form.is_valid():
-            form.save()
-            saved_anything = True
-        else:
-            messages.error(request, 'Please fix the highlighted profile fields below.')
 
         if bank_form.is_valid():
             bank_form.save()
@@ -710,26 +601,30 @@ def edit_employee_profile(request, user_id):
         'documents': documents, 'doc_form': doc_form, 'role_form': role_form,
         'profile': profile, 'bank_detail': bank_detail, 'salary_form': salary_form,
         'is_admin_viewer': request.user.role == 'ADMIN',
-        'can_change_role': request.user.role == 'HR',
+        # FIXED: was hardcoded to 'HR' only in the duplicate definition that
+        # used to win — Admin now correctly sees Role & Access too.
+        'can_change_role': request.user.role in ('HR', 'ADMIN'),
         'enrollment_prefix': enrollment_prefix,
         'employee_id_prefix': employee_id_prefix,
-        'enrollment_suffix': split_id(profile.enrollment_id, enrollment_prefix),
-        'employee_id_suffix': split_id(emp_user.employee_id, employee_id_prefix),
+        'enrollment_suffix': request.POST.get('enrollment_suffix', split_id(profile.enrollment_id, enrollment_prefix)),
+        'employee_id_suffix': request.POST.get('employee_id_suffix', split_id(emp_user.employee_id, employee_id_prefix)),
     })
+
 
 @hr_or_admin_required
 def change_role(request, user_id):
+    """FIXED: this used to be defined twice. The version that was actually
+    running blocked Admin entirely ('Admin has view-only access and cannot
+    change roles') — which contradicted the Role & Access dropdown we built
+    for Admin. That block has been removed: both HR and Admin can now
+    change roles, with RoleChangeForm itself restricting which roles HR
+    (vs Admin) is allowed to pick from."""
     emp_user = get_object_or_404(User, id=user_id)
 
-    if request.user.role == 'ADMIN':
-        messages.error(request, "Admin has view-only access and cannot change roles.")
-        return redirect('employees:employee_detail', user_id=emp_user.id)
     if emp_user == request.user:
         messages.error(request, "You cannot change your own role.")
         return redirect('employees:edit_employee_profile', user_id=emp_user.id)
-    if emp_user.role == 'ADMIN':
-        messages.error(request, "Admin accounts are top priority and their role cannot be changed.")
-        return redirect('employees:edit_employee_profile', user_id=emp_user.id)
+
     if request.user.role == 'HR' and emp_user.role in ('HR', 'ADMIN'):
         messages.error(request, "HR cannot change the role of an HR or Admin account.")
         return redirect('employees:edit_employee_profile', user_id=emp_user.id)
@@ -748,7 +643,7 @@ def change_role(request, user_id):
 def delete_employee(request, user_id):
     emp_user = get_object_or_404(User, id=user_id)
     if emp_user == request.user:
-        messages.error(request, "You Cannot delete you own account")
+        messages.error(request, "You cannot delete your own account.")
         return redirect('employees:directory')
 
     profile, _ = EmployeeProfile.objects.get_or_create(user=emp_user)
@@ -795,13 +690,14 @@ def my_department(request):
         s.is_present_today = s.id in present_user_ids
     return render(request, 'employees/my_department.html', {'staff': staff, 'department': request.user.department})
 
+
 @login_required
 def team_member_detail(request, user_id):
     if not request.user.is_manager():
         messages.error(request, "Only managers can view this page.")
         return redirect('core:dashboard')
 
-    emp_user = get_object_or_404(User, id=user_id, department=request.user.department, branch=request.user.branch, )
+    emp_user = get_object_or_404(User, id=user_id, department=request.user.department, branch=request.user.branch)
     if emp_user.id == request.user.id:
         messages.error(request, "You cannot view your own team member page.")
         return redirect('employees:my_department')
@@ -820,6 +716,7 @@ def team_member_detail(request, user_id):
         'is_onboarding': is_onboarding, 'is_present_today': is_present_today,
     })
 
+
 @login_required
 def my_resignation(request):
     if not _can_apply_resignation(request.user):
@@ -837,19 +734,26 @@ def my_resignation(request):
 
 @admin_only_required
 def onboard_hr(request):
+    """FIXED: the role-dispatch block used to be indented at the same
+    level as `if form.is_valid():` instead of inside it — meaning it ran
+    even on an invalid form (crashing with UnboundLocalError on `role`).
+    The Employee/Manager branch was also missing a `return redirect(...)`,
+    which meant a successful onboard of an Employee/Manager here would
+    fall through and implicitly return None, crashing with
+    'view didn't return an HttpResponse'. Both are fixed below."""
     if request.method == 'POST':
-        form = OnboardHRForm(request.POST)
+        form = OnboardHRForm(request.POST, acting_user=request.user)
         if form.is_valid():
             role = form.cleaned_data['role']
             user = form.save(commit=False)
             user.role = role
             user.set_password(form.cleaned_data['password'])
 
-            if role == User.ROLE_EMPLOYEE:
+            if role in (User.ROLE_EMPLOYEE, User.ROLE_MANAGER):
                 branch = form.cleaned_data['branch']
                 department = form.cleaned_data.get('department')
                 user.branch = branch
-                if department and department.manager_id:
+                if department and department.manager_id and role != User.ROLE_MANAGER:
                     user.manager = department.manager
                 else:
                     user.manager = None
@@ -861,12 +765,14 @@ def onboard_hr(request):
                 profile.save()
                 BankDetail.objects.get_or_create(user=user)
 
+                role_label = 'Manager' if role == User.ROLE_MANAGER else 'Employee'
                 messages.success(
                     request,
-                    f'{user} onboarded as Employee successfully (Employee ID {user.employee_id}, Enrollment ID {profile.enrollment_id}).'
+                    f'{user} onboarded as {role_label} successfully (Employee ID {user.employee_id}, Enrollment ID {profile.enrollment_id}).'
                 )
+                return redirect('employees:employee_detail', user_id=user.id)
 
-            else:  # HR or ADMIN
+            else:  # HR, Admin, or COO
                 user.manager = None
                 accessible = form.cleaned_data['accessible_branches']
                 user.branch = _primary_branch(accessible)
@@ -887,13 +793,19 @@ def onboard_hr(request):
                         request,
                         f'{user} onboarded as HR successfully (Employee ID {user.employee_id}, Enrollment ID {profile.enrollment_id}).'
                     )
+                elif role == User.ROLE_COO:
+                    messages.success(request, f'{user} onboarded as COO successfully.')
                 else:
                     messages.success(request, f'{user} onboarded as Admin successfully.')
 
-            return redirect('employees:employee_detail', user_id=user.id)
+                return redirect('employees:employee_detail', user_id=user.id)
+        # form invalid — fall through to re-render with errors below
     else:
-        form = OnboardHRForm()
+        form = OnboardHRForm(acting_user=request.user)
+
     return render(request, 'employees/onboard_hr.html', {'form': form})
+
+
 @login_required
 def complete_onboarding(request, user_id):
     emp_user = get_object_or_404(User, id=user_id)

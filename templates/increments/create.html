@@ -1,71 +1,213 @@
 {% extends 'core/base.html' %}
 {% block content %}
 <div class="page-header"><h1>New Increment Request</h1></div>
+
 <div class="card">
-  {% if form.errors %}
-  <ul class="messages"><li class="error">Please fix the highlighted fields below.</li></ul>
-  {% endif %}
-  <form method="post" id="increment-form">
-    {% csrf_token %}
-    <label>Employee</label>
-    {{ form.user }}
-    {% if form.user.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ form.user.errors.0 }}</p>{% endif %}
+  <div class="tabs" id="increment-tabs">
+    <button type="button" class="tab-btn {% if active_tab != 'manager' %}active{% endif %}" data-tab="employee" onclick="setIncrementTab('employee')">Employee</button>
+    <button type="button" class="tab-btn {% if active_tab == 'manager' %}active{% endif %}" data-tab="manager" onclick="setIncrementTab('manager')">Manager</button>
+  </div>
 
-    <div id="feedback-manager-wrap" style="display:none;">
-      <label>Manager (for Feedback)</label>
-      {{ form.feedback_manager }}
-      <p style="color:var(--grey-500); font-size:0.8rem; margin-top:-8px;">
-        This employee's increment needs manager feedback before you can approve or reject it.
-      </p>
-      {% if form.feedback_manager.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ form.feedback_manager.errors.0 }}</p>{% endif %}
-    </div>
+  <!-- ================= EMPLOYEE TAB ================= -->
+  <div id="employee-tab-panel" style="{% if active_tab == 'manager' %}display:none;{% endif %}">
+    {% if form.errors %}
+    <ul class="messages"><li class="error">Please fix the highlighted fields below.</li></ul>
+    {% endif %}
+    <form method="post" id="increment-form">
+      {% csrf_token %}
+      <input type="hidden" name="form_type" value="employee">
+      <label>Employee Name</label>
+      {{ form.user }}
+      {% if form.user.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ form.user.errors.0 }}</p>{% endif %}
 
-    <div id="no-feedback-note" style="display:none;">
-      <p style="color:var(--grey-500); font-size:0.8rem; margin:-8px 0 14px;">
-        No manager feedback is needed for a Manager or Admin — you'll be able to approve or reject right away.
-      </p>
-    </div>
+      <div id="feedback-manager-wrap" style="display:none;">
+        <label>Project Manager (for Feedback)</label>
+        {{ form.feedback_manager }}
+        <p style="color:var(--grey-500); font-size:0.8rem; margin-top:-8px;">
+          Auto-filled from the employee's currently assigned project. This Project Manager will review performance and suggest an increment percentage.
+        </p>
+        {% if form.feedback_manager.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ form.feedback_manager.errors.0 }}</p>{% endif %}
+      </div>
 
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 20px;">
-      <div><label>New Basic Salary</label>{{ form.requested_basic }}{% if form.requested_basic.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ form.requested_basic.errors.0 }}</p>{% endif %}</div>
-      <div><label>Effective Date</label>{{ form.effective_date }}{% if form.effective_date.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ form.effective_date.errors.0 }}</p>{% endif %}</div>
-    </div>
-    <label>Reason</label>
-    {{ form.reason }}
-    <button type="submit" class="btn btn-primary" id="increment-submit-btn">Send for Feedback</button>
-  </form>
+      <div id="no-feedback-note" style="display:none;">
+        <p style="color:var(--grey-500); font-size:0.8rem; margin:-8px 0 14px;">
+          No Project Manager feedback is needed for a Manager or Admin — you'll be able to decide right away from the Increments list.
+        </p>
+      </div>
 
-  {{ user_roles_json|json_script:"user-roles-data" }}
-  <script>
-    (function () {
-      var ROLES = JSON.parse(document.getElementById('user-roles-data').textContent);
-      var userSelect = document.querySelector('#increment-form select[name="user"]');
-      var wrap = document.getElementById('feedback-manager-wrap');
-      var noFeedbackNote = document.getElementById('no-feedback-note');
-      var managerSelect = document.querySelector('#increment-form select[name="feedback_manager"]');
-      var submitBtn = document.getElementById('increment-submit-btn');
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 20px;">
+        <div>
+          <label>Current Basic Salary</label>
+          {{ form.current_basic }}
+          <p style="color:var(--grey-500); font-size:0.78rem; margin-top:-10px;">Auto-filled from the employee's salary structure — you can type a different value if needed.</p>
+          {% if form.current_basic.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ form.current_basic.errors.0 }}</p>{% endif %}
+        </div>
+        <div>
+          <label>Effective Date</label>
+          {{ form.effective_date }}
+          {% if form.effective_date.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ form.effective_date.errors.0 }}</p>{% endif %}
+        </div>
+      </div>
+      <label>Reason for Increment</label>
+      {{ form.reason }}
+      <button type="submit" class="btn btn-primary" id="increment-submit-btn">Send for Feedback</button>
+    </form>
 
-      function update() {
-        var role = ROLES[userSelect.value];
-        if (role === 'EMPLOYEE') {
-          wrap.style.display = '';
-          noFeedbackNote.style.display = 'none';
-          submitBtn.textContent = 'Send for Feedback';
-        } else if (role) {
-          wrap.style.display = 'none';
-          if (managerSelect) managerSelect.value = '';
-          noFeedbackNote.style.display = '';
-          submitBtn.textContent = 'Create Increment';
-        } else {
-          wrap.style.display = 'none';
-          noFeedbackNote.style.display = 'none';
-          submitBtn.textContent = 'Send for Feedback';
+    {{ user_roles_json|json_script:"user-roles-data" }}
+    {{ user_basic_json|json_script:"user-basic-data" }}
+    {{ user_manager_json|json_script:"user-manager-data" }}
+    <script>
+      (function () {
+        var ROLES = JSON.parse(document.getElementById('user-roles-data').textContent);
+        var BASICS = JSON.parse(document.getElementById('user-basic-data').textContent);
+        var MANAGERS = JSON.parse(document.getElementById('user-manager-data').textContent);
+
+        var userSelect = document.querySelector('#increment-form select[name="user"]');
+        var wrap = document.getElementById('feedback-manager-wrap');
+        var noFeedbackNote = document.getElementById('no-feedback-note');
+        var managerSelect = document.querySelector('#increment-form select[name="feedback_manager"]');
+        var submitBtn = document.getElementById('increment-submit-btn');
+        var currentBasicInput = document.querySelector('#increment-form input[name="current_basic"]');
+
+        function updateForEmployee() {
+          var empId = userSelect.value;
+          var role = ROLES[empId];
+
+          if (empId && BASICS.hasOwnProperty(empId)) {
+            currentBasicInput.value = BASICS[empId];
+          } else {
+            currentBasicInput.value = '';
+          }
+
+          if (role === 'EMPLOYEE') {
+            wrap.style.display = '';
+            noFeedbackNote.style.display = 'none';
+            submitBtn.textContent = 'Send for Feedback';
+
+            var mgrId = MANAGERS[empId];
+            if (managerSelect) {
+              managerSelect.value = mgrId ? String(mgrId) : '';
+            }
+          } else if (role) {
+            wrap.style.display = 'none';
+            if (managerSelect) managerSelect.value = '';
+            noFeedbackNote.style.display = '';
+            submitBtn.textContent = 'Create Increment';
+          } else {
+            wrap.style.display = 'none';
+            noFeedbackNote.style.display = 'none';
+            submitBtn.textContent = 'Send for Feedback';
+          }
         }
-      }
 
-      userSelect.addEventListener('change', update);
-      update();
-    })();
-  </script>
+        userSelect.addEventListener('change', updateForEmployee);
+        updateForEmployee();
+      })();
+    </script>
+  </div>
+
+  <!-- ================= MANAGER TAB ================= -->
+  <div id="manager-tab-panel" style="{% if active_tab != 'manager' %}display:none;{% endif %}">
+    {% if manager_form.errors %}
+    <ul class="messages"><li class="error">Please fix the highlighted fields below.</li></ul>
+    {% endif %}
+    <form method="post" enctype="multipart/form-data" id="manager-increment-form">
+      {% csrf_token %}
+      <input type="hidden" name="form_type" value="manager">
+      <label>Name</label>
+      {{ manager_form.user }}
+      {% if manager_form.user.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ manager_form.user.errors.0 }}</p>{% endif %}
+
+      <label>Role</label>
+      <input type="text" id="manager-role-display" class="form-control" readonly style="background:var(--grey-50);" value="-">
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 20px;">
+        <div>
+          <label>Current Basic Salary</label>
+          {{ manager_form.current_basic }}
+          <p style="color:var(--grey-500); font-size:0.78rem; margin-top:-10px;">Auto-filled from the manager's salary structure — you can type a different value if needed.</p>
+          {% if manager_form.current_basic.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ manager_form.current_basic.errors.0 }}</p>{% endif %}
+        </div>
+        <div>
+          <label>Effective Date</label>
+          {{ manager_form.effective_date }}
+          {% if manager_form.effective_date.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ manager_form.effective_date.errors.0 }}</p>{% endif %}
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 20px;">
+        <div>
+          <label>Increment Percentage (%)</label>
+          {{ manager_form.increment_percent }}
+          {% if manager_form.increment_percent.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ manager_form.increment_percent.errors.0 }}</p>{% endif %}
+        </div>
+        <div>
+          <label>Increment Amount</label>
+          <input type="text" id="manager-increment-amount" class="form-control" readonly style="background:var(--grey-50);" value="-">
+          <p style="color:var(--grey-500); font-size:0.78rem; margin-top:-10px;">Calculated automatically from Current Basic Salary &times; Increment Percentage.</p>
+        </div>
+      </div>
+
+      <label>Upload Report</label>
+      {{ manager_form.report_file }}
+      {% if manager_form.report_file.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ manager_form.report_file.errors.0 }}</p>{% endif %}
+
+      <label style="margin-top:14px;">Notes for COO (optional)</label>
+      {{ manager_form.reason }}
+
+      <button type="submit" class="btn btn-primary" style="margin-top:10px;">Send to COO for Approval</button>
+    </form>
+
+    {{ manager_role_json|json_script:"manager-role-data" }}
+    {{ manager_basic_json|json_script:"manager-basic-data" }}
+    <script>
+      (function () {
+        var ROLES = JSON.parse(document.getElementById('manager-role-data').textContent);
+        var BASICS = JSON.parse(document.getElementById('manager-basic-data').textContent);
+
+        var mgrSelect = document.querySelector('#manager-increment-form select[name="user"]');
+        var roleDisplay = document.getElementById('manager-role-display');
+        var currentBasicInput = document.querySelector('#manager-increment-form input[name="current_basic"]');
+        var percentInput = document.querySelector('#manager-increment-form input[name="increment_percent"]');
+        var amountDisplay = document.getElementById('manager-increment-amount');
+
+        function recalcAmount() {
+          var basic = parseFloat(currentBasicInput.value);
+          var percent = parseFloat(percentInput.value);
+          if (!isNaN(basic) && !isNaN(percent)) {
+            amountDisplay.value = (basic * percent / 100).toFixed(2);
+          } else {
+            amountDisplay.value = '-';
+          }
+        }
+
+        function updateForManager() {
+          var mgrId = mgrSelect.value;
+          roleDisplay.value = mgrId && ROLES.hasOwnProperty(mgrId) ? ROLES[mgrId] : '-';
+          if (mgrId && BASICS.hasOwnProperty(mgrId)) {
+            currentBasicInput.value = BASICS[mgrId];
+          } else {
+            currentBasicInput.value = '';
+          }
+          recalcAmount();
+        }
+
+        mgrSelect.addEventListener('change', updateForManager);
+        currentBasicInput.addEventListener('input', recalcAmount);
+        percentInput.addEventListener('input', recalcAmount);
+        updateForManager();
+      })();
+    </script>
+  </div>
 </div>
+
+<script>
+  function setIncrementTab(tab) {
+    document.querySelectorAll('#increment-tabs .tab-btn').forEach(function (btn) {
+      btn.classList.toggle('active', btn.dataset.tab === tab);
+    });
+    document.getElementById('employee-tab-panel').style.display = (tab === 'employee') ? '' : 'none';
+    document.getElementById('manager-tab-panel').style.display = (tab === 'manager') ? '' : 'none';
+  }
+</script>
 {% endblock %}

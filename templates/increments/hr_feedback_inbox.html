@@ -1,0 +1,26 @@
+{% extends 'core/base.html' %}
+{% block content %}
+<div class="page-header"><h1>Manager Feedback — Increments</h1></div>
+<div class="card">
+  <table>
+    <tr><th>Employee</th><th>Manager</th><th>Current Basic</th><th>Suggested %</th><th>Overall Suggestion</th><th>Comments</th><th></th></tr>
+    {% for r in requests %}
+    <tr>
+      <td>{{ r.user.get_full_name|default:r.user.username }}</td>
+      <td>{{ r.feedback_manager.get_full_name|default:r.feedback_manager.username }}</td>
+      <td>Rs. {{ r.current_basic }}</td>
+      <td style="font-weight:700; color:#1D9A55;">{{ r.feedback.suggested_percent|default:"-" }}%</td>
+      <td>
+        {% if r.feedback.suggestion == 'SUGGEST' %}<span class="badge badge-success">Suggests increment</span>
+        {% elif r.feedback.suggestion == 'NOT_SUGGEST' %}<span class="badge badge-danger">Doesn't suggest</span>
+        {% else %}<span class="badge badge-warning">Neutral</span>{% endif %}
+      </td>
+      <td style="max-width:260px; white-space:normal;">{{ r.feedback.description|default:"-"|truncatewords:20 }}</td>
+      <td>
+        <a href="{% url 'increments:list' %}" class="btn btn-primary btn-sm">Decide</a>
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="7" class="empty-state">No manager feedback submitted yet.</td></tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}

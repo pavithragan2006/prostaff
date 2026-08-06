@@ -7,6 +7,7 @@ from core.validators import (
 from employees.models import EmployeeProfile, EmployeeDocument, ResignationRequest, BankDetail
 from core.models import User
 from core.models import Branch , Department 
+from core.utils import user_can_switch_branch
 
 
 NAME_ATTRS = {
@@ -161,6 +162,7 @@ class NewEmployeeForm(forms.ModelForm):
         required=False,
         widget=DepartmentSelect(attrs={'class': 'form-control'}),
     )
+    branch = forms.ModelChoiceField(queryset=Branch.objects.all().order_by('code'), required=False)
 
     class Meta:
         model = User
@@ -169,7 +171,19 @@ class NewEmployeeForm(forms.ModelForm):
         widgets = {'date_joined_company': forms.DateInput(attrs={'type': 'date'})}
 
     def __init__(self, *args, **kwargs):
+        acting_user = kwargs.pop('acting_user', None)
         super().__init__(*args, **kwargs)
+
+        if acting_user and not user_can_switch_branch(acting_user):
+            # This HR user is restricted to their own branch — only show
+            # that branch, and only departments belonging to it.
+            allowed_branches = Branch.objects.filter(id=acting_user.branch_id) if acting_user.branch_id else Branch.objects.none()
+            self.fields['branch'].queryset = allowed_branches
+            self.fields['department'].queryset = Department.objects.filter(
+                branch__in=allowed_branches
+            ).select_related('branch').order_by('branch__code', 'name')
+        # else: HR/Admin who can switch branches keeps the full, unrestricted querysets.
+
         for field in self.fields.values():
             field.widget.attrs.setdefault('class', 'form-control')
 
@@ -189,20 +203,20 @@ class NewEmployeeForm(forms.ModelForm):
 class HREmployeeEditForm(forms.ModelForm):
     first_name = forms.CharField(max_length=150, required=False, validators=[name_validator], widget=forms.TextInput(attrs=NAME_ATTRS))
     last_name = forms.CharField(max_length=150, required=False, validators=[name_validator], widget=forms.TextInput(attrs=NAME_ATTRS))
+    email = forms.EmailField(required=False, widget=forms.EmailInput(attrs={'class': 'form-control'}))
     phone_country_code = forms.ChoiceField(choices=COUNTRY_CODES, required=False, widget=forms.Select(attrs=COUNTRY_CODE_ATTRS))
     phone = forms.CharField(max_length=10, required=False, validators=[phone_validator], widget=forms.TextInput(attrs=PHONE_ATTRS))
     employee_id = forms.CharField(max_length=20, required=False, validators=[alnum_id_validator], widget=forms.TextInput(attrs={**ID_ATTRS, 'readonly': 'readonly'}))
+    date_joined_company = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}))
+    branch = forms.ModelChoiceField(queryset=Branch.objects.all().order_by('code'), required=False)
     accessible_branches = forms.ModelMultipleChoiceField(
-        queryset=Branch.objects.all().order_by('code'),
-        required=False,
-        widget=forms.CheckboxSelectMultiple,
-        label="Branch Access",
+        queryset=Branch.objects.all().order_by('code'), required=False,
+        widget=forms.CheckboxSelectMultiple, label="Branch Access",
         help_text="Select every branch this HR user can view and manage.",
     )
     department = BranchAwareDepartmentField(
         queryset=Department.objects.all().select_related('branch').order_by('branch__code', 'name'),
-        required=False,
-        widget=DepartmentSelect(attrs={'class': 'form-control'}),
+        required=False, widget=DepartmentSelect(attrs={'class': 'form-control'}),
     )
 
     class Meta:
@@ -220,8 +234,11 @@ class HREmployeeEditForm(forms.ModelForm):
 
             
 class EmployeeIdentityForm(forms.ModelForm):
-    """Extended identity / HR fields. Only ever reachable by HR, Admin, or
-    the employee's Manager — never editable by the employee themself."""
+    designation = forms.CharField(max_length=100, required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))
+    gender = forms.ChoiceField(choices=EmployeeProfile.GENDER_CHOICES, required=False, widget=forms.Select(attrs={'class': 'form-control'}))
+    marital_status = forms.ChoiceField(choices=EmployeeProfile.MARITAL_STATUS_CHOICES, required=False, widget=forms.Select(attrs={'class': 'form-control'}))
+    date_of_birth = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}))
+    qualification = forms.CharField(max_length=200, required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))
     aadhar_no = forms.CharField(max_length=14, required=False, validators=[aadhar_validator], widget=forms.TextInput(attrs=AADHAR_ATTRS))
     pan_no = forms.CharField(max_length=10, required=False, validators=[pan_validator], widget=forms.TextInput(attrs=PAN_ATTRS))
     uan_pf_number = forms.CharField(max_length=30, required=False, widget=forms.TextInput(attrs=NUMERIC_ATTRS))
@@ -231,6 +248,9 @@ class EmployeeIdentityForm(forms.ModelForm):
     emergency_contact_phone = forms.CharField(max_length=10, required=False, validators=[phone_validator], widget=forms.TextInput(attrs=PHONE_ATTRS))
     reference1_contact = forms.CharField(max_length=10, required=False, validators=[phone_validator], widget=forms.TextInput(attrs=PHONE_ATTRS))
     reference2_contact = forms.CharField(max_length=10, required=False, validators=[phone_validator], widget=forms.TextInput(attrs=PHONE_ATTRS))
+    old_joining_date = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}))
+    is_pf_applicable = forms.BooleanField(required=False, widget=forms.CheckboxInput())
+    id_card_received = forms.BooleanField(required=False, widget=forms.CheckboxInput())
 
     class Meta:
         model = EmployeeProfile
@@ -273,10 +293,11 @@ class EmployeeIdentityForm(forms.ModelForm):
 
 
 class BankDetailForm(forms.ModelForm):
-    """Bank/salary account details."""
     account_number = forms.CharField(max_length=18, required=False, validators=[bank_account_validator], widget=forms.TextInput(attrs=BANK_ATTRS))
     ifsc_code = forms.CharField(max_length=11, required=False, validators=[ifsc_validator], widget=forms.TextInput(attrs=IFSC_ATTRS))
     account_holder_name = forms.CharField(max_length=150, required=False, validators=[name_validator], widget=forms.TextInput(attrs=NAME_ATTRS))
+    bank_name = forms.CharField(max_length=150, required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))
+    branch_name = forms.CharField(max_length=150, required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))
 
     class Meta:
         model = BankDetail
@@ -326,6 +347,11 @@ class SelfDocumentForm(forms.ModelForm):
 
 
 class RoleChangeForm(forms.ModelForm):
+    is_senior_hr = forms.BooleanField(
+        required=False, label="Senior HR",
+        help_text="Elevates this HR user to Senior HR — used when an HR is promoted to a senior position."
+    )
+
     class Meta:
         model = User
         fields = ['role']
@@ -334,11 +360,32 @@ class RoleChangeForm(forms.ModelForm):
         acting_user = kwargs.pop('acting_user', None)
         super().__init__(*args, **kwargs)
         self.fields['role'].widget.attrs.setdefault('class', 'form-control')
+        self.fields['is_senior_hr'].widget.attrs.setdefault('class', 'form-check-input')
+
+        if self.instance and self.instance.pk:
+            self.fields['is_senior_hr'].initial = self.instance.is_senior_hr
+
+        if acting_user and acting_user.role == 'ADMIN':
+            # Admin sees every role, including COO.
+            self.fields['role'].choices = User.ROLE_CHOICES
+
         if acting_user and acting_user.role == 'HR':
             self.fields['role'].choices = [
                 (User.ROLE_EMPLOYEE, 'Employee'),
                 (User.ROLE_MANAGER, 'Manager'),
+                (User.ROLE_PROJECT_MANAGER, 'Project Manager'),
+                (User.ROLE_GENERAL_MANAGER, 'General Manager'),
+                (User.ROLE_COO, 'COO'),
+                (User.ROLE_HR, 'HR'),
+                
             ]
+
+        def save(self, commit=True):
+            user = super().save(commit=False)
+            user.is_senior_hr = self.cleaned_data.get('is_senior_hr', False) if user.role == 'HR' else False
+            if commit:
+                user.save()
+            return user
 
 
 class ResignationRequestForm(forms.ModelForm):
@@ -366,24 +413,21 @@ class OnboardHRForm(forms.ModelForm):
     role = forms.ChoiceField(
         choices=[
             (User.ROLE_EMPLOYEE, 'Employee'),
+            (User.ROLE_MANAGER, 'manager'),
             (User.ROLE_HR, 'HR'),
             (User.ROLE_ADMIN, 'Admin'),
+            (User.ROLE_COO, 'COO'),
+            (User.ROLE_SENIOR_HR, 'Senior HR'),
         ],
         required=True,
     )
 
-    department = BranchAwareDepartmentField(
-        queryset=Department.objects.all().select_related('branch').order_by('branch__code', 'name'),
-        required=False,
-        widget=DepartmentSelect(attrs={'class': 'form-control'}),
+    department = forms.ModelChoiceField(
+        queryset=Department.objects.none(), required=False,
+        widget=forms.Select(attrs={'class': 'form-control'})
     )
-
-    # Single-branch field — only used/required when role == EMPLOYEE.
-    branch = forms.ModelChoiceField(
-        queryset=Branch.objects.all().order_by('code'),
-        required=False,
-        label="Branch",
-    )
+    branch = forms.ModelChoiceField(queryset=Branch.objects.none(), required=False)
+    
 
     # Multi-branch field — only used/required when role == HR or ADMIN.
     accessible_branches = forms.ModelMultipleChoiceField(
@@ -402,16 +446,33 @@ class OnboardHRForm(forms.ModelForm):
             'date_joined_company': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
         }
 
+ 
+
     def __init__(self, *args, **kwargs):
+        acting_user = kwargs.pop('acting_user', None)
         super().__init__(*args, **kwargs)
-        for name, field in self.fields.items():
-            if name != 'accessible_branches':
-                field.widget.attrs.setdefault('class', 'form-control')
+
+
+        if acting_user and acting_user.role == 'HR':
+            allowed_branches = acting_user.accessible_branches.all()
+            if not allowed_branches.exists() and acting_user.branch_id:
+                allowed_branches = Branch.objects.filter(id=acting_user.branch_id)
+
+            self.fields['branch'].queryset = allowed_branches.order_by('code')
+            self.fields['department'].queryset = Department.objects.filter(
+                branch__in=allowed_branches
+            ).select_related('branch').order_by('branch__code', 'name')
+        else:
+            self.fields['branch'].queryset = Branch.objects.all().order_by('code')
+            self.fields['department'].queryset = Department.objects.all().select_related('branch').order_by('branch__code', 'name')
+
+        for field in self.fields.values():
+            field.widget.attrs.setdefault('class', 'form-control')
 
     def clean(self):
         cleaned = super().clean()
         role = cleaned.get('role')
-        if role == User.ROLE_EMPLOYEE:
+        if role in (User.ROLE_EMPLOYEE, User.ROLE_MANAGER):
             if not cleaned.get('branch'):
                 self.add_error('branch', "Select a branch for this employee.")
         elif role in (User.ROLE_HR, User.ROLE_ADMIN):

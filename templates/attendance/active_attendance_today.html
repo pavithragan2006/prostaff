@@ -8,6 +8,7 @@
   <div class="stat-card"><div class="stat-value">{{ total_active }}</div><div class="stat-label">Active Employees</div></div>
   <div class="stat-card"><div class="stat-value">{{ present_count }}</div><div class="stat-label">Present Today</div></div>
   <div class="stat-card orange"><div class="stat-value">{{ absent_count }}</div><div class="stat-label">Absent Today</div></div>
+  <div class="stat-card"><div class="stat-value">{{ leave_count }}</div><div class="stat-label">On Leave Today</div></div>
 </div>
 
 <div class="card">
@@ -23,6 +24,8 @@
         {% if row.is_present %}
           <span class="badge badge-success">Present</span>
           {% if row.is_late %}<span class="badge badge-warning">Late</span>{% endif %}
+        {% elif row.is_on_leave %}
+          <span class="badge badge-info">Leave</span>
         {% else %}
           <span class="badge badge-danger">Absent</span>
         {% endif %}

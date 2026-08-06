@@ -89,8 +89,18 @@
       <td>{{ s.user.employee_id|default:"-" }}</td>
       <td>{{ s.user.get_role_display }}</td>
       <td>{{ s.user.department|default:"-" }}</td>
-      {% for d in s.daily_rows %}
-      <td style="{% if d.is_sunday %}background:#FFF7F2;{% endif %} text-align:center;">{{ d.hours|default:"-" }}</td>
+     {% for d in s.daily_rows %}
+     <td style="{% if d.is_sunday %}background:#FFF7F2;{% elif d.attended %}background:#E5F7EC;{% endif %} text-align:center; white-space:nowrap;">
+        {% if d.attended %}
+          {% if d.hours %}
+            <span style="color:#1D9A55; font-weight:700;">{{ d.hours }}</span>
+          {% else %}
+            <span class="badge badge-success" style="padding:2px 8px; font-size:0.68rem;">Present</span>
+          {% endif %}
+        {% else %}
+          <span style="color:var(--grey-400);">-</span>
+        {% endif %}
+      </td>
       {% endfor %}
       <td style="text-align:center;">{{ s.total_days_worked }}</td>
       <td style="text-align:center;">{{ s.cl_quota }}</td>

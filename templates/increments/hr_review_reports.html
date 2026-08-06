@@ -1,0 +1,22 @@
+{% extends 'core/base.html' %}
+{% block content %}
+<div class="page-header"><h1>Review Performance Reports</h1></div>
+{% for i in requests %}
+<div class="card increment-card">
+  <h3 style="margin:0 0 6px;">{{ i.user.get_full_name|default:i.user.username }}</h3>
+  <p style="color:var(--grey-500); font-size:0.85rem; margin:0 0 10px;">Current Basic: Rs. {{ i.current_basic }} &middot; Submitted by {{ i.feedback_manager }}</p>
+  <div style="padding:12px 14px; background:var(--grey-50); border-radius:8px; margin-bottom:14px;">
+    <label style="font-weight:700;">Manager's Report</label>
+    <p style="margin:6px 0 0;">{{ i.performance_report }}</p>
+  </div>
+  <form method="post" action="{% url 'increments:hr_forward_to_ceo' i.id %}">
+    {% csrf_token %}
+    <label>Your Notes for the CEO (optional)</label>
+    <textarea name="hr_notes" class="form-control" rows="3" placeholder="Any additional context for the CEO..."></textarea>
+    <button type="submit" class="btn btn-primary">Forward to CEO</button>
+  </form>
+</div>
+{% empty %}
+<div class="card"><p class="empty-state">No submitted reports awaiting your review.</p></div>
+{% endfor %}
+{% endblock %}

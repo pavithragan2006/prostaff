@@ -745,3 +745,57 @@ table th:last-child, table td:last-child {
 .branch-dropdown-divider { height:1px; background:var(--grey-100); margin:4px 6px; }
 .branch-dropdown-option-selectall { font-weight:700; }
 .branch-dropdown-option input[type="checkbox"] { width:16px; height:16px; margin:0; flex-shrink:0; accent-color:var(--electric-blue); }
+
+/* ---------- COO: Increment decision table ---------- */
+.coo-increment-table { min-width: 900px; }
+.coo-increment-table th, .coo-increment-table td { vertical-align: middle; }
+
+.coo-emp-name { font-weight: 700; }
+
+.coo-pct-badge {
+  display: inline-block;
+  background: #E5F7EC;
+  color: #1D9A55;
+  font-weight: 800;
+  font-size: 0.9rem;
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+
+.coo-no-file { color: var(--grey-500); font-size: 0.82rem; }
+
+.coo-review-panel {
+  display: none;
+  padding: 20px 24px;
+  background: var(--grey-50);
+  border-top: 2px solid var(--electric-blue);
+}
+.coo-review-panel.open-panel { display: block; }
+
+.coo-review-panel-fields {
+  display: flex;
+  align-items: end;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.coo-review-panel-fields .pct-field { width: 140px; flex-shrink: 0; }
+.coo-review-panel-fields .notes-field { flex: 1; min-width: 220px; }
+.coo-review-panel-fields label {
+  display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--grey-500); margin-bottom: 6px;
+}
+.coo-review-panel-fields .form-control { margin-bottom: 0; }
+
+.coo-review-panel-approve-btn { margin-bottom: 14px; }
+
+.coo-review-reject-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--grey-100);
+}
+.coo-review-reject-line span { font-size: 0.82rem; color: var(--grey-500); flex-shrink: 0; }
+.coo-review-reject-line input { flex: 1; min-width: 180px; margin-bottom: 0; }
+.coo-review-reject-line .btn { flex-shrink: 0; }

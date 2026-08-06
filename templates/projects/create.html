@@ -44,137 +44,169 @@
       <p class="empty-state" id="selected-empty" style="padding:8px 0;">No employees selected yet.</p>
     </div>
 
-    <label>Project Lead</label>
-    <select name="lead" id="lead-select" class="form-control" required>
-      <option value="">-- Select employees above first --</option>
-    </select>
+    
+     {% if is_general_manager %}
+      <label>Project Manager</label>
+      <select name="project_manager" id="pm-select" class="form-control" required>
+        <option value="">-- Select a Project Manager --</option>
+        {% for pm in project_managers %}
+        <option value="{{ pm.id }}">{{ pm.get_full_name|default:pm.username }}</option>
+        {% endfor %}
+      </select>
+      <p style="color:var(--grey-500); font-size:0.8rem; margin-top:-8px;">Choose the Project Manager who will own this project before selecting a Project Leader below.</p>
+      {% endif %}
+
+      <label>Project Lead</label>
+      <select name="lead" id="lead-select" class="form-control" required {% if is_general_manager %}disabled{% endif %}>
+        <option value="">-- Select employees above first --</option>
+      </select>
+
+
+  
+  
 
     <button type="submit" class="btn btn-primary" style="margin-top:10px;">Publish Project</button>
   </form>
 
   {{ employees_json|json_script:"employees-data" }}
   <script>
-    (function () {
-      var ALL_EMPLOYEES = JSON.parse(document.getElementById('employees-data').textContent);
-      var selected = {};
+  (function () {
+    var ALL_EMPLOYEES = JSON.parse(document.getElementById('employees-data').textContent);
+    var selected = {};
 
-      var deptSelect = document.getElementById('dept-select');
-      var addLabel = document.getElementById('add-emp-label');
-      var addSelect = document.getElementById('emp-add-select');
-      var selectedBox = document.getElementById('selected-employees');
-      var selectedEmpty = document.getElementById('selected-empty');
-      var leadSelect = document.getElementById('lead-select');
-      var form = document.getElementById('project-form');
+    var deptSelect = document.getElementById('dept-select');
+    var addLabel = document.getElementById('add-emp-label');
+    var addSelect = document.getElementById('emp-add-select');
+    var selectedBox = document.getElementById('selected-employees');
+    var selectedEmpty = document.getElementById('selected-empty');
+    var leadSelect = document.getElementById('lead-select');
+    var form = document.getElementById('project-form');
+    var pmSelect = document.getElementById('pm-select');
+    var isGeneralManager = {% if is_general_manager %}true{% else %}false{% endif %};
 
-      deptSelect.addEventListener('change', populateAddSelect);
-      addSelect.addEventListener('change', function () {
-        var id = addSelect.value;
-        if (!id) return;
-        var emp = ALL_EMPLOYEES.filter(function (e) { return String(e.id) === id; })[0];
-        if (emp) addEmployee(emp);
-        populateAddSelect();
+    deptSelect.addEventListener('change', populateAddSelect);
+    addSelect.addEventListener('change', function () {
+      var id = addSelect.value;
+      if (!id) return;
+      var emp = ALL_EMPLOYEES.filter(function (e) { return String(e.id) === id; })[0];
+      if (emp) addEmployee(emp);
+      populateAddSelect();
+    });
+
+    function populateAddSelect() {
+      var dept = deptSelect.value;
+      addSelect.innerHTML = '';
+      if (!dept) {
+        addSelect.disabled = true;
+        addLabel.style.opacity = '0.5';
+        var ph = document.createElement('option');
+        ph.value = ''; ph.textContent = '-- Select a department first --';
+        addSelect.appendChild(ph);
+        return;
+      }
+      addSelect.disabled = false;
+      addLabel.style.opacity = '1';
+      var available = ALL_EMPLOYEES.filter(function (emp) { return emp.dept === dept && !selected[emp.id]; });
+      var placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = available.length ? '-- Select an employee to add --' : '-- No more employees in this department --';
+      addSelect.appendChild(placeholder);
+      available.forEach(function (emp) {
+        var opt = document.createElement('option');
+        opt.value = emp.id;
+        opt.textContent = emp.name + ' (' + emp.empId + ')';
+        addSelect.appendChild(opt);
+      });
+    }
+
+    function addEmployee(emp) { selected[emp.id] = emp; renderSelected(); }
+    function removeEmployee(id) { delete selected[id]; renderSelected(); populateAddSelect(); }
+
+    function renderSelected() {
+      var ids = Object.keys(selected);
+      selectedBox.innerHTML = '';
+      if (ids.length === 0) { selectedBox.appendChild(selectedEmpty); updateLeadOptions(); return; }
+
+      var byDept = {};
+      ids.forEach(function (id) {
+        var emp = selected[id];
+        byDept[emp.dept] = byDept[emp.dept] || [];
+        byDept[emp.dept].push(emp);
       });
 
-      function populateAddSelect() {
-        var dept = deptSelect.value;
-        addSelect.innerHTML = '';
-        if (!dept) {
-          addSelect.disabled = true;
-          addLabel.style.opacity = '0.5';
-          var ph = document.createElement('option');
-          ph.value = ''; ph.textContent = '-- Select a department first --';
-          addSelect.appendChild(ph);
-          return;
-        }
-        addSelect.disabled = false;
-        addLabel.style.opacity = '1';
-        var available = ALL_EMPLOYEES.filter(function (emp) { return emp.dept === dept && !selected[emp.id]; });
+      Object.keys(byDept).sort().forEach(function (dept) {
+        var group = document.createElement('div');
+        group.style.marginBottom = '10px';
+        var heading = document.createElement('div');
+        heading.style.cssText = 'font-weight:700; font-size:0.8rem; color:var(--grey-700); text-transform:uppercase; margin-bottom:6px;';
+        heading.textContent = dept + ' (' + byDept[dept].length + ')';
+        group.appendChild(heading);
+
+        var chipWrap = document.createElement('div');
+        chipWrap.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px;';
+        byDept[dept].forEach(function (emp) {
+          var chip = document.createElement('span');
+          chip.className = 'badge badge-info';
+          chip.style.cssText = 'display:inline-flex; align-items:center; gap:6px; font-weight:500;';
+          chip.innerHTML = emp.name + ' ';
+          var removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.textContent = '\u00D7';
+          removeBtn.style.cssText = 'background:none; border:none; color:inherit; cursor:pointer; font-weight:700; padding:0 0 0 4px;';
+          removeBtn.addEventListener('click', function () { removeEmployee(emp.id); });
+          chip.appendChild(removeBtn);
+          var hidden = document.createElement('input');
+          hidden.type = 'hidden'; hidden.name = 'employees'; hidden.value = emp.id;
+          chip.appendChild(hidden);
+          chipWrap.appendChild(chip);
+        });
+        group.appendChild(chipWrap);
+        selectedBox.appendChild(group);
+      });
+      updateLeadOptions();
+    }
+
+    function updateLeadOptions() {
+      var ids = Object.keys(selected);
+      var currentValue = leadSelect.value;
+      leadSelect.innerHTML = '';
+      if (ids.length === 0) {
         var placeholder = document.createElement('option');
-        placeholder.value = '';
-        placeholder.textContent = available.length ? '-- Select an employee to add --' : '-- No more employees in this department --';
-        addSelect.appendChild(placeholder);
-        available.forEach(function (emp) {
-          var opt = document.createElement('option');
-          opt.value = emp.id;
-          opt.textContent = emp.name + ' (' + emp.empId + ')';
-          addSelect.appendChild(opt);
-        });
+        placeholder.value = ''; placeholder.textContent = '-- Select employees above first --';
+        leadSelect.appendChild(placeholder);
+        return;
       }
-
-      function addEmployee(emp) { selected[emp.id] = emp; renderSelected(); }
-      function removeEmployee(id) { delete selected[id]; renderSelected(); populateAddSelect(); }
-
-      function renderSelected() {
-        var ids = Object.keys(selected);
-        selectedBox.innerHTML = '';
-        if (ids.length === 0) { selectedBox.appendChild(selectedEmpty); updateLeadOptions(); return; }
-
-        var byDept = {};
-        ids.forEach(function (id) {
-          var emp = selected[id];
-          byDept[emp.dept] = byDept[emp.dept] || [];
-          byDept[emp.dept].push(emp);
-        });
-
-        Object.keys(byDept).sort().forEach(function (dept) {
-          var group = document.createElement('div');
-          group.style.marginBottom = '10px';
-          var heading = document.createElement('div');
-          heading.style.cssText = 'font-weight:700; font-size:0.8rem; color:var(--grey-700); text-transform:uppercase; margin-bottom:6px;';
-          heading.textContent = dept + ' (' + byDept[dept].length + ')';
-          group.appendChild(heading);
-
-          var chipWrap = document.createElement('div');
-          chipWrap.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px;';
-          byDept[dept].forEach(function (emp) {
-            var chip = document.createElement('span');
-            chip.className = 'badge badge-info';
-            chip.style.cssText = 'display:inline-flex; align-items:center; gap:6px; font-weight:500;';
-            chip.innerHTML = emp.name + ' ';
-            var removeBtn = document.createElement('button');
-            removeBtn.type = 'button';
-            removeBtn.textContent = '\u00D7';
-            removeBtn.style.cssText = 'background:none; border:none; color:inherit; cursor:pointer; font-weight:700; padding:0 0 0 4px;';
-            removeBtn.addEventListener('click', function () { removeEmployee(emp.id); });
-            chip.appendChild(removeBtn);
-            var hidden = document.createElement('input');
-            hidden.type = 'hidden'; hidden.name = 'employees'; hidden.value = emp.id;
-            chip.appendChild(hidden);
-            chipWrap.appendChild(chip);
-          });
-          group.appendChild(chipWrap);
-          selectedBox.appendChild(group);
-        });
-        updateLeadOptions();
-      }
-
-      function updateLeadOptions() {
-        var ids = Object.keys(selected);
-        var currentValue = leadSelect.value;
-        leadSelect.innerHTML = '';
-        if (ids.length === 0) {
-          var placeholder = document.createElement('option');
-          placeholder.value = ''; placeholder.textContent = '-- Select employees above first --';
-          leadSelect.appendChild(placeholder);
-          return;
-        }
-        var blank = document.createElement('option');
-        blank.value = ''; blank.textContent = '-- Select a lead --';
-        leadSelect.appendChild(blank);
-        ids.forEach(function (id) {
-          var emp = selected[id];
-          var opt = document.createElement('option');
-          opt.value = emp.id; opt.textContent = emp.name + ' (' + emp.dept + ')';
-          leadSelect.appendChild(opt);
-        });
-        if (selected[currentValue]) leadSelect.value = currentValue;
-      }
-
-      form.addEventListener('submit', function (e) {
-        if (Object.keys(selected).length === 0) { e.preventDefault(); alert('Select at least one employee to assign.'); return; }
-        if (!leadSelect.value) { e.preventDefault(); alert('Choose a project lead.'); }
+      var blank = document.createElement('option');
+      blank.value = ''; blank.textContent = '-- Select a lead --';
+      leadSelect.appendChild(blank);
+      ids.forEach(function (id) {
+        var emp = selected[id];
+        var opt = document.createElement('option');
+        opt.value = emp.id; opt.textContent = emp.name + ' (' + emp.dept + ')';
+        leadSelect.appendChild(opt);
       });
-    })();
-  </script>
+      if (selected[currentValue]) leadSelect.value = currentValue;
+    }
+
+    if (pmSelect) {
+      pmSelect.addEventListener('change', function () {
+        leadSelect.disabled = !pmSelect.value;
+        if (!pmSelect.value) {
+          leadSelect.value = '';
+        }
+      });
+    }
+
+    form.addEventListener('submit', function (e) {
+      if (isGeneralManager && !pmSelect.value) {
+        e.preventDefault();
+        alert('Select a Project Manager first.');
+        return;
+      }
+      if (Object.keys(selected).length === 0) { e.preventDefault(); alert('Select at least one employee to assign.'); return; }
+      if (!leadSelect.value) { e.preventDefault(); alert('Choose a project lead.'); }
+    });
+  })();
+</script>
 </div>
 {% endblock %}

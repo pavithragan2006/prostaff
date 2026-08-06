@@ -22,7 +22,8 @@
 <div class="card">
   <p>{{ project.description|default:"No description provided." }}</p>
   <p>
-    <p><strong>Created by (Manager):</strong> {{ project.manager|default:project.created_by|default:"Unknown" }}</p>
+   <p><strong>Published by:</strong> {{ project.created_by.get_full_name|default:project.created_by.username|default:"Unknown" }}{% if project.created_by %} <span class="badge badge-info" style="font-size:0.65rem;">{{ project.created_by.get_role_display }}</span>{% endif %}</p>
+  <p><strong>Project Manager:</strong> {{ project.manager.get_full_name|default:project.manager.username|default:"Unassigned" }}</p>
     <strong>Lead:</strong> {{ project.lead|default:"Unassigned" }} &nbsp;|&nbsp;
     <strong>Dates:</strong> {{ project.start_date|default:"-" }} to {{ project.end_date|default:"-" }}
   </p>

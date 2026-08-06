@@ -67,8 +67,8 @@ class EmployeeProfile(models.Model):
     # (existing field) is repurposed to hold the SPSB01/02/03/04-#### id.
     enrollment_id = models.CharField(max_length=20, unique=True, null=True, blank=True)
 
-    is_pf_applicable = models.BooleanField(default=True, verbose_name="PF Applicable")
-    id_card_received = models.BooleanField(default=False, verbose_name="ID Card Received")
+    is_pf_applicable = models.BooleanField(default=True, blank=True, verbose_name="PF Applicable")
+    id_card_received = models.BooleanField(default=False, blank=True, verbose_name="ID Card Received")
     shift = models.CharField(max_length=10, choices=SHIFT_CHOICES, blank=True)
     work_type = models.CharField(max_length=10, choices=WORK_TYPE_CHOICES, blank=True)
     gender = models.CharField(max_length=10, choices=GENDER_CHOICES, blank=True)

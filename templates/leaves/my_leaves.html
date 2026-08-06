@@ -12,18 +12,9 @@
     {% csrf_token %}
     <input type="hidden" name="request_type" id="request-type-input" value="PERMISSION">
 
-    {% if other_hrs %}
-    <label>Send To (HR)</label>
-    <select name="target_hr" class="form-control" required>
-      <option value="">-- Select an HR colleague --</option>
-      {% for hr in other_hrs %}
-      <option value="{{ hr.id }}">{{ hr.get_full_name|default:hr.username }}</option>
-      {% endfor %}
-    </select>
-    <p style="color:var(--grey-500); font-size:0.8rem; margin:-10px 0 14px;">
-      As HR, your own request is reviewed by a colleague you choose here — never by yourself.
-    </p>
-    {% endif %}
+    
+    
+      
 
     <div id="permission-fields">
       <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0 20px;">
@@ -72,10 +63,11 @@
         {% endif %}
       </td>
       <td>{{ r.reason|default:"-"|truncatewords:10 }}</td>
-      <td>
+     <td>
         {% if r.status == 'APPROVED' %}<span class="badge badge-success">Approved</span>
         {% elif r.status == 'REJECTED' %}<span class="badge badge-danger">Rejected</span>
         {% elif r.status == 'PENDING_HR' %}<span class="badge badge-warning">Pending HR</span>
+        {% elif r.status == 'PENDING_COO' %}<span class="badge badge-warning">Pending COO</span>
         {% elif r.status == 'HR_REJECTED_PENDING_MANAGER' %}<span class="badge badge-warning">HR Declined - Awaiting Manager</span>
         {% else %}<span class="badge badge-warning">Pending Manager</span>{% endif %}
       </td>

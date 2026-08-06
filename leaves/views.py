@@ -67,13 +67,7 @@ def my_leaves(request):
                 messages.error(request, "Please choose both a start and end date for the leave request.")
                 return redirect('leaves:my_leaves')
 
-        if request.user.role == 'HR':
-            target_hr_id = request.POST.get('target_hr')
-            if not target_hr_id:
-                messages.error(request, "Select which HR colleague should review your request.")
-                return redirect('leaves:my_leaves')
-            leave.target_hr_id = target_hr_id
-
+      
         leave.status = leave.initial_status()
         leave.save()
         messages.success(request, f"{leave.get_request_type_display()} request submitted.")
@@ -88,19 +82,17 @@ def my_leaves(request):
 def _team_managed_by(manager):
     return get_manager_team(manager)
 
-
 @login_required
 def leave_approvals(request):
     user = request.user
     today = timezone.localdate()
-    context = {'hr_rejected_pending': None, 'on_leave_today': None}
+    context = {'hr_rejected_pending': None, 'on_leave_today': None, 'team_leave_records': None}
 
     if user.role == 'HR':
         active_branch = get_active_branch(request)
 
         # HR's actionable queue: Manager's own requests routed straight
         # to HR, plus HR-self requests targeted at this HR colleague.
-        # Employee requests never land here anymore.
         requests_qs = LeaveRequest.objects.filter(
             status='PENDING_HR'
         ).exclude(user=user).filter(
@@ -110,16 +102,21 @@ def leave_approvals(request):
             requests_qs = requests_qs.filter(user__branch=active_branch)
         context['requests'] = requests_qs
 
-        # INFORMATIONAL ONLY: requests stuck at PENDING_MANAGER because no
-        # manager could be resolved (e.g. the department has no manager
-        # assigned). HR sees these so they know to fix the department's
-        # manager assignment, but per policy cannot approve/reject them —
-        # review_leave() now enforces that only the resolved manager can.
-      
-        # Approved leaves currently in effect today — this is where HR
-        # sees the outcome of a Manager's approval, scoped to their branch.
-        context['on_leave_today'] = approved_on_leave_today(active_branch)
-        
+        # Unified, view-only record of every finalized leave/permission
+        # request for employees in this branch — approved or rejected,
+        # regardless of date, and regardless of whether it was decided by
+        # a department Manager, a Project Manager, or HR itself. HR has no
+        # approve/reject authority over Manager/PM-decided requests, but
+        # needs full visibility for attendance and payroll tracking.
+        team_leave_qs = LeaveRequest.objects.filter(
+            status__in=['APPROVED', 'REJECTED']
+        ).exclude(user=user).select_related(
+            'user', 'user__department', 'reviewed_by_manager', 'reviewed_by_hr'
+        )
+        if active_branch:
+            team_leave_qs = team_leave_qs.filter(user__branch=active_branch)
+        context['team_leave_records'] = team_leave_qs.order_by('-applied_at')[:200]
+
     elif user.role == 'ADMIN':
         active_branch = get_active_branch(request)
         requests_qs = LeaveRequest.objects.select_related(
@@ -131,9 +128,9 @@ def leave_approvals(request):
         context['on_leave_today'] = approved_on_leave_today(active_branch)
 
     elif user.is_manager():
-        # A Manager's queue is exclusively their own department's
-        # Employees, same branch — Manager's own leave requests never
-        # appear here since those route straight to HR.
+        # A Manager's (including a Project Manager's) queue is exclusively
+        # their own team — same branch. A Manager's own leave requests
+        # never appear here since those route straight to HR.
         team = _team_managed_by(user)
         requests_qs = LeaveRequest.objects.filter(
             user__in=team, status='PENDING_MANAGER'
@@ -145,7 +142,6 @@ def leave_approvals(request):
         return redirect('core:dashboard')
 
     return render(request, 'leaves/approvals.html', context)
-
 
 @login_required
 def review_leave(request, leave_id, decision):
