@@ -3,8 +3,8 @@
 <div class="page-header">
   <h1>{{ emp_user.get_full_name|default:emp_user.username }}'s Payslips</h1>
   <div>
+    <a href="{% url 'payroll:edit_salary_structure' emp_user.id %}" class="btn btn-accent btn-sm">Edit Salary Structure</a>
     <a href="{% url 'payroll:runs' %}" class="btn btn-outline btn-sm">&larr; Back to Payroll</a>
-    <a href="{% url 'payroll:edit_salary_structure' emp_user.id %}?next={{ request.path|urlencode }}" class="btn btn-outline btn-sm">Edit Salary Structure</a>
   </div>
 </div>
 

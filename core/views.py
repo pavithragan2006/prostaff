@@ -60,11 +60,30 @@ def dashboard(request):
         context['manager_count'] = base_qs.filter(user__role='MANAGER').count()
         context['employee_count'] = base_qs.filter(user__role='EMPLOYEE').count()
     elif user.role == 'HR':
+        from leaves.utils import approved_on_leave_today
+
         base_qs = EmployeeProfile.objects.exclude(user__role__in=['HR', 'ADMIN'])
         if active_branch:
             base_qs = base_qs.filter(user__branch=active_branch)
+
         context['total_employees'] = base_qs.count()
-        context['active_employees'] = base_qs.filter(status='ACTIVE').count()
+        active_profiles = base_qs.filter(status='ACTIVE')
+        context['active_employees'] = active_profiles.count()
+        context['inactive_employees'] = context['total_employees'] - context['active_employees']
+
+        active_user_ids = set(active_profiles.values_list('user_id', flat=True))
+
+        present_today_count = AttendanceRecord.objects.filter(
+            date=today, in_time__isnull=False, user_id__in=active_user_ids
+        ).values('user_id').distinct().count()
+
+        on_leave_today_count = sum(
+            1 for r in approved_on_leave_today(active_branch) if r.user_id in active_user_ids
+        )
+
+        context['present_today'] = present_today_count
+        context['on_leave_today'] = on_leave_today_count
+        context['absent_today'] = max(0, context['active_employees'] - present_today_count - on_leave_today_count)
 
     else:
         month_start = today.replace(day=1)

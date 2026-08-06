@@ -1,0 +1,149 @@
+{% extends 'core/base.html' %}
+{% block content %}
+<div class="page-header"><h1>COO Dashboard</h1></div>
+
+
+{% if tab == 'directory' %}
+<div class="card">
+  <table>
+    <tr><th>Name</th><th>Role</th><th>Department</th><th>Email</th></tr>
+    {% for u in leaders %}
+    <tr>
+      <td>{{ u.get_full_name|default:u.username }}</td>
+      <td>{{ u.get_role_display }}</td>
+      <td>{{ u.department.name|default:"-" }}</td>
+      <td>{{ u.email|default:"-" }}</td>
+    </tr>
+    {% empty %}<tr><td colspan="4" class="empty-state">No HR, Managers, or Admin found for this branch.</td></tr>{% endfor %}
+  </table>
+</div>
+
+{% elif tab == 'leave_approval' %}
+<div class="card">
+  <h3>Pending Your Approval</h3>
+  <table>
+    <tr><th>Name</th><th>Role</th><th>Type</th><th>Dates</th><th>Reason</th><th></th></tr>
+    {% for r in requests %}
+    <tr>
+      <td>{{ r.user.get_full_name|default:r.user.username }}</td>
+      <td>{{ r.user.get_role_display }}</td>
+      <td>{{ r.get_request_type_display }}</td>
+      <td>
+        {% if r.request_type == 'PERMISSION' %}{{ r.permission_date }}{% else %}{{ r.start_date }} - {{ r.end_date }}{% endif %}
+      </td>
+      <td>{{ r.reason|default:"-"|truncatewords:12 }}</td>
+      <td>
+        <form method="post" action="{% url 'core:coo_review_leave' r.id 'approve' %}" style="display:inline;">
+          {% csrf_token %}<button type="submit" class="btn btn-primary btn-sm">Approve</button>
+        </form>
+        <form method="post" action="{% url 'core:coo_review_leave' r.id 'reject' %}" style="display:inline;">
+          {% csrf_token %}<button type="submit" class="btn btn-outline btn-sm">Reject</button>
+        </form>
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="6" class="empty-state">No requests pending your approval.</td></tr>{% endfor %}
+  </table>
+</div>
+<div class="card">
+  <h3>History</h3>
+  <table>
+    <tr><th>Name</th><th>Type</th><th>Status</th><th>Applied</th></tr>
+    {% for r in history %}
+    <tr>
+      <td>{{ r.user.get_full_name|default:r.user.username }}</td>
+      <td>{{ r.get_request_type_display }}</td>
+      <td>
+        {% if r.status == 'APPROVED' %}<span class="badge badge-success">Approved</span>
+        {% elif r.status == 'REJECTED' %}<span class="badge badge-danger">Rejected</span>
+        {% else %}<span class="badge badge-warning">{{ r.get_status_display }}</span>{% endif %}
+      </td>
+      <td>{{ r.applied_at|date:"d M Y" }}</td>
+    </tr>
+    {% empty %}<tr><td colspan="4" class="empty-state">No history yet.</td></tr>{% endfor %}
+  </table>
+</div>
+
+{% elif tab == 'increment_approval' %}
+<div class="page-header" style="margin-bottom:14px;">
+  <h1 style="font-size:1.1rem;">Reports Awaiting Your Decision</h1>
+  <span class="badge badge-warning">{{ pending_coo|length }} pending</span>
+</div>
+
+<div class="card" style="overflow-x:auto; padding:0;">
+  <table class="coo-increment-table">
+    <tr>
+      <th>Employee</th>
+      <th>Role</th>
+      <th>Current Basic</th>
+      <th>HR Suggested</th>
+      <th>Report</th>
+      <th></th>
+    </tr>
+    {% for i in pending_coo %}
+    <tr>
+      <td class="coo-emp-name">{{ i.user.get_full_name|default:i.user.username }}</td>
+      <td>{{ i.user.get_role_display }}</td>
+      <td>Rs. {{ i.current_basic }}</td>
+      <td>
+        <span class="coo-pct-badge">{% if i.feedback %}{{ i.feedback.suggested_percent|default:"-" }}{% else %}-{% endif %}%</span>
+      </td>
+      <td>
+        {% if i.feedback and i.feedback.report_file %}
+        <a href="{{ i.feedback.report_file.url }}" class="btn btn-outline btn-sm" target="_blank">Download</a>
+        {% else %}
+        <span class="coo-no-file">No file</span>
+        {% endif %}
+      </td>
+     
+    </tr>
+    <tr class="coo-review-row">
+      <td colspan="6">
+        <div class="coo-review-panel" id="coo-review-{{ i.id }}">
+          <form method="post" action="{% url 'core:coo_decide_increment' i.id 'approve' %}">
+            {% csrf_token %}
+            <div class="coo-review-panel-fields">
+              <div class="pct-field">
+                <label>Increment %</label>
+                <input type="number" step="0.01" name="coo_percent" class="form-control" value="{% if i.feedback %}{{ i.feedback.suggested_percent|default:'' }}{% endif %}" required>
+              </div>
+              <div class="notes-field">
+                <label>Notes (optional)</label>
+                <input type="text" name="coo_comment" class="form-control" placeholder="Any comments for HR...">
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm coo-review-panel-approve-btn">Approve &amp; Send to HR</button>
+          </form>
+
+          <div class="coo-review-reject-line">
+            <span>Not approving this one?</span>
+            <form method="post" action="{% url 'core:coo_decide_increment' i.id 'reject' %}" style="display:flex; gap:10px; flex:1; margin:0;">
+              {% csrf_token %}
+              <input type="text" name="coo_rejection_reason" class="form-control" placeholder="Rejection reason">
+              <button type="submit" class="btn btn-danger btn-sm">Reject</button>
+            </form>
+          </div>
+        </div>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="6" class="empty-state">Nothing awaiting your decision right now.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<script>
+function toggleCooReview(id) {
+  var panel = document.getElementById(id);
+  panel.classList.toggle('open-panel');
+}
+</script>
+
+
+{% elif tab == 'reports' %}
+<div class="card">
+  <h3>Reports</h3>
+  <p>View all submitted reports here.</p>
+</div>
+
+{% endif %}
+{% endblock %}

@@ -58,3 +58,12 @@ def admin_only_required(view_func):
             raise PermissionDenied("Only Admin can perform this action.")
         return view_func(request, *args, **kwargs)
     return _wrapped
+
+def coo_required(view_func):   # was ceo_required
+    @wraps(view_func)
+    @login_required
+    def _wrapped(request, *args, **kwargs):
+        if request.user.role != 'COO':   # was 'CEO'
+            raise PermissionDenied("Only the COO can view this page.")
+        return view_func(request, *args, **kwargs)
+    return _wrapped

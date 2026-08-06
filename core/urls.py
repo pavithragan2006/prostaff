@@ -1,6 +1,7 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from core import views
+from core import coo_views
 
 app_name = 'core'
 
@@ -30,4 +31,14 @@ urlpatterns = [
     ), name='password_reset_complete'),
 
     path('set-branch/', views.set_active_branch, name='set_active_branch'),
+]
+
+
+
+
+urlpatterns += [
+    path('coo/', coo_views.coo_dashboard, name='coo_dashboard'),
+    path('coo/leave/<int:leave_id>/<str:decision>/', coo_views.coo_review_leave, name='coo_review_leave'),
+    path('coo/increment/<int:increment_id>/<str:decision>/', coo_views.coo_decide_increment, name='coo_decide_increment'),
+    path('coo/reports/<str:report_type>/download/', coo_views.coo_download_report, name='coo_download_report'),
 ]

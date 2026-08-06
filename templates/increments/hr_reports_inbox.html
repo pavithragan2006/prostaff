@@ -1,0 +1,23 @@
+{% extends 'core/base.html' %}
+{% block content %}
+<div class="page-header"><h1>Manager Reports</h1></div>
+<div class="card">
+  <table>
+    <tr><th>Employee</th><th>Manager</th><th>Current Basic</th><th>Suggested %</th><th>Report</th><th>Comments</th></tr>
+    {% for r in requests %}
+    <tr>
+      <td>{{ r.user.get_full_name|default:r.user.username }}</td>
+      <td>{{ r.feedback_manager.get_full_name|default:r.feedback_manager.username }}</td>
+      <td>Rs. {{ r.current_basic }}</td>
+      <td style="font-weight:700; color:#1D9A55;">{{ r.feedback.suggested_percent|default:"-" }}%</td>
+      <td>
+        {% if r.feedback.report_file %}
+        <a href="{{ r.feedback.report_file.url }}" class="btn btn-outline btn-sm" target="_blank">Download</a>
+        {% else %}-{% endif %}
+      </td>
+      <td style="max-width:260px; white-space:normal;">{{ r.feedback.description|default:"-"|truncatewords:15 }}</td>
+    </tr>
+    {% empty %}<tr><td colspan="6" class="empty-state">No manager reports submitted yet.</td></tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}

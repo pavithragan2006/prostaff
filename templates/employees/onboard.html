@@ -23,7 +23,7 @@
       <div><label>Department</label>{{ form.department }}</div>
       <div><label>Branch</label>{{ form.branch }}{% if locked_branch %}<p style="color:var(--grey-500); font-size:0.8rem; margin:-10px 0 10px;">New hires join your own branch automatically.</p>{% endif %}</div>
       <div><label>Joining Date</label>{{ form.date_joined_company }}</div>
-      <div><label>Temporary Password</label>{{ form.password }}{% if form.password.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ form.password.errors.0 }}</p>{% endif %}</div>
+      <div><label>Password</label>{{ form.password }}{% if form.password.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ form.password.errors.0 }}</p>{% endif %}</div>
     </div>
     <button type="submit" class="btn btn-primary">Create Employee</button>
   </form>
