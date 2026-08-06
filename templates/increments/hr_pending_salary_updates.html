@@ -1,0 +1,24 @@
+{% extends 'core/base.html' %}
+{% block content %}
+<div class="page-header"><h1>Apply CEO-Approved Increments</h1></div>
+{% for i in requests %}
+<div class="card increment-card">
+  <h3 style="margin:0 0 6px;">{{ i.user.get_full_name|default:i.user.username }}</h3>
+  <p style="color:var(--grey-500); font-size:0.85rem; margin:0 0 10px;">Current Basic: Rs. {{ i.current_basic }} &middot; CEO Approved: {{ i.ceo_percent }}%</p>
+  {% if i.ceo_comment %}
+  <div style="padding:12px 14px; background:var(--grey-50); border-radius:8px; margin-bottom:14px;">
+    <label style="font-weight:700;">CEO's Comment</label>
+    <p style="margin:6px 0 0;">{{ i.ceo_comment }}</p>
+  </div>
+  {% endif %}
+  <p style="font-weight:600;">New Basic Salary: Rs. {{ i.current_basic|floatformat:2 }} &times; (1 + {{ i.ceo_percent }}%) = <span style="color:#1D9A55;">calculated on apply</span></p>
+  <form method="post" action="{% url 'increments:hr_apply_increment' i.id %}" style="display:flex; gap:16px; align-items:end;">
+    {% csrf_token %}
+    <div><label>Effective Date</label><input type="date" name="effective_date" class="form-control" required></div>
+    <button type="submit" class="btn btn-primary">Apply to Salary</button>
+  </form>
+</div>
+{% empty %}
+<div class="card"><p class="empty-state">No CEO-approved increments waiting to be applied.</p></div>
+{% endfor %}
+{% endblock %}

@@ -2,7 +2,9 @@
 {% block content %}
 <div class="page-header">
   <h1>Increments</h1>
+  {% if request.user.role == 'HR' %}
   <a href="{% url 'increments:create' %}" class="btn btn-accent">+ New Increment</a>
+  {% endif %}
 </div>
 
 <!-- SECTION 1: Active Increment Requests -->
@@ -64,6 +66,7 @@
 <p style="color:var(--grey-700); font-size:0.85rem; margin:8px 0 14px;">Employees reaching one year since their last increment within the next 30 days.</p>
 
 {% for d in due_soon %}
+{% if d.user %}
 <div class="card increment-card due-soon-card{% if d.days_left < 0 %} overdue{% endif %}">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
     <div>
@@ -86,9 +89,11 @@
       <input type="hidden" name="anniversary_date" value="{{ d.anniversary_date|date:'Y-m-d' }}">
       <button type="submit" class="btn btn-outline btn-sm">Cancel</button>
     </form>
-    <a href="{% url 'increments:create' %}?user={{ d.user.id }}" class="btn btn-accent btn-sm">Give Increment</a>
+    <a href="{% url 'increments:request_performance_report' d.user.id %}" class="btn btn-accent btn-sm">Request Performance Report</a>
+    <a href="{% url 'increments:create' %}?user={{ d.user.id }}" class="btn btn-outline btn-sm">Give Increment Directly</a>
   </div>
 </div>
+{% endif %}
 {% empty %}
 <div class="card"><p class="empty-state">No one is approaching their annual increment right now.</p></div>
 {% endfor %}
@@ -111,6 +116,9 @@
         {% if h.latest.status == 'APPROVED' %}<span class="badge badge-success" style="margin-left:6px;">Approved</span>
         {% elif h.latest.status == 'REJECTED' %}<span class="badge badge-danger" style="margin-left:6px;">Rejected</span>{% endif %}
       </p>
+      {% if h.latest.status == 'REJECTED' and h.latest.manager_rejection_reason %}
+      <p style="margin:6px 0 0; font-size:0.8rem; color:var(--grey-500);">Rejected: "{{ h.latest.manager_rejection_reason|truncatewords:10 }}"</p>
+      {% endif %}
     </a>
     {% empty %}
     <p class="empty-state">No finalized increments yet.</p>

@@ -5,6 +5,7 @@
   <div style="display:flex; gap:10px; align-items:center;">
     {% if user.role == 'ADMIN' %}
       <a href="{% url 'employees:edit_my_profile' %}" class="btn btn-accent">Edit Profile</a>
+      <a href="{% url 'employees:directory' %}" class="btn btn-outline">&larr; Back to Directory</a>
     {% elif can_apply_resignation %}
       {% if pending_resignation.status == 'PENDING' %}
       <span class="badge badge-warning">Resignation Pending HR Review</span>

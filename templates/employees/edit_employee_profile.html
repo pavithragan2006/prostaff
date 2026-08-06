@@ -181,16 +181,26 @@
 </div>
 {% endif %}
 
-{% if emp_user.role != 'ADMIN' and can_change_role %}
+{% if can_change_role %}
 <div class="card">
   <h3>Role &amp; Access</h3>
-  <form method="post" action="{% url 'employees:change_role' emp_user.id %}" style="display:flex; gap:10px; align-items:end;">
+  <form method="post" action="{% url 'employees:change_role' emp_user.id %}">
     {% csrf_token %}
-    <div style="flex:1;"><label>Role</label>{{ role_form.role }}</div>
-    <button type="submit" class="btn btn-accent" style="margin-bottom:14px;">Update Role</button>
+    <div style="display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
+      <div style="flex:1; min-width:200px;"><label>Role</label>{{ role_form.role }}</div>
+      <button type="submit" class="btn btn-accent" style="margin-bottom:14px;">Update Role</button>
+    </div>
+
+    <div id="senior-hr-wrap" style="display:none; margin-top:6px;">
+      <label style="display:flex; align-items:center; gap:8px; font-weight:600;">
+        {{ role_form.is_senior_hr }} Senior HR
+      </label>
+      <p style="color:var(--grey-500); font-size:0.8rem; margin-top:-4px;">{{ role_form.is_senior_hr.help_text }}</p>
+    </div>
   </form>
   <p style="color:var(--grey-500); font-size:0.8rem; margin:0;">HR can only assign Employee or Manager. Contact Admin to grant HR/Admin access.</p>
 </div>
+
 {% if is_admin_viewer and emp_user.role == 'HR' %}
 <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--grey-100);">
   <p style="margin:0 0 8px; font-size:0.85rem; color:var(--grey-700);">
@@ -203,6 +213,7 @@
 </div>
 {% endif %}
 {% endif %}
+
 
 <div class="card">
   <h3>Salary Details</h3>
@@ -248,6 +259,8 @@
     <button type="submit" class="btn btn-accent" style="margin-bottom:14px;">Upload</button>
   </form>
 </div>
+
+
 <script>
 (function () {
   var branchSelect = document.querySelector('#main-profile-form select[name="branch"]');
@@ -281,6 +294,22 @@
 
   branchSelect.addEventListener('change', filterDepartments);
   filterDepartments(); // run once on page load to match the initial branch
+})();
+</script>
+
+<script>
+(function () {
+  var roleForm = document.querySelector('form[action="{% url 'employees:change_role' emp_user.id %}"]');
+  if (!roleForm) return;
+  var roleSelect = roleForm.querySelector('select[name="role"]');
+  var wrap = document.getElementById('senior-hr-wrap');
+  if (!roleSelect || !wrap) return;
+
+  function toggleSeniorHr() {
+    wrap.style.display = (roleSelect.value === 'HR') ? '' : 'none';
+  }
+  roleSelect.addEventListener('change', toggleSeniorHr);
+  toggleSeniorHr();
 })();
 </script>
 {% endblock %}

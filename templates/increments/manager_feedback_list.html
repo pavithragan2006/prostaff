@@ -1,21 +1,20 @@
 {% extends 'core/base.html' %}
 {% block content %}
-<div class="page-header"><h1>Increment Feedback Requests</h1></div>
+<div class="page-header"><h1>Increment Requests </h1></div>
 <div class="card">
   <table>
-    <tr><th>Employee</th><th>Requested Basic</th><th>Effective Date</th><th>Status</th><th></th></tr>
+    <tr><th>Employee</th><th>Current Basic</th><th>Requested Basic</th><th>Change</th><th>Effective Date</th><th>Reason</th><th></th></tr>
     {% for i in increments %}
     <tr>
       <td>{{ i.user.get_full_name|default:i.user.username }}</td>
+      <td>Rs. {{ i.current_basic }}</td>
       <td>Rs. {{ i.requested_basic }}</td>
+      <td style="color:#1D9A55;">+{{ i.increment_percent }}%</td>
       <td>{{ i.effective_date }}</td>
-      <td>
-        {% if i.feedback %}<span class="badge badge-success">Feedback submitted</span>
-        {% else %}<span class="badge badge-warning">Awaiting your feedback</span>{% endif %}
-      </td>
-      <td><a href="{% url 'increments:submit_feedback' i.id %}" class="btn btn-outline btn-sm">{% if i.feedback %}Edit Feedback{% else %}Give Feedback{% endif %}</a></td>
+      <td>{{ i.reason|default:"-"|truncatewords:12 }}</td>
+      <td><a href="{% url 'increments:submit_feedback' i.id %}" class="btn btn-primary btn-sm">Review</a></td>
     </tr>
-    {% empty %}<tr><td colspan="5" class="empty-state">No increment requests need your feedback right now.</td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="7" class="empty-state">No increment requests need your decision right now.</td></tr>{% endfor %}
   </table>
 </div>
 {% endblock %}

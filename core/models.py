@@ -41,18 +41,27 @@ class Department(models.Model):
 
 
 class User(AbstractUser):
+   
+    ROLE_COO = 'COO'
     ROLE_ADMIN = 'ADMIN'
+    ROLE_SENIOR_HR = 'SENIOR_HR'
     ROLE_HR = 'HR'
     ROLE_MANAGER = 'MANAGER'
+    ROLE_PROJECT_MANAGER = 'PROJECT_MANAGER'
+    ROLE_GENERAL_MANAGER = 'GENERAL_MANAGER'
     ROLE_EMPLOYEE = 'EMPLOYEE'
     ROLE_CHOICES = [
+        (ROLE_COO, 'COO'),
         (ROLE_ADMIN, 'Admin'),
+        (ROLE_SENIOR_HR, 'Senior HR'),
         (ROLE_HR, 'HR'),
         (ROLE_MANAGER, 'Manager'),
+        (ROLE_PROJECT_MANAGER, 'Project Manager'),
+        (ROLE_GENERAL_MANAGER, 'General Manager'),
         (ROLE_EMPLOYEE, 'Employee'),
     ]
-
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_EMPLOYEE)
+    is_senior_hr = models.BooleanField(default=False)
+    role = models.CharField(max_length=50, choices=ROLE_CHOICES, default=ROLE_EMPLOYEE)
     employee_id = models.CharField(max_length=20, unique=True, null=True, blank=True)
     department = models.ForeignKey(Department, null=True, blank=True, on_delete=models.SET_NULL, related_name='employees')
     manager = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='team_members')
@@ -75,11 +84,16 @@ class User(AbstractUser):
     phone_country_code = models.CharField(max_length=5, choices=COUNTRY_CODES, default='+91')
     phone = models.CharField(max_length=10, blank=True)
 
+    
+
     def is_hr_or_admin(self):
-        return self.role in (self.ROLE_ADMIN, self.ROLE_HR)
+        return self.role in (self.ROLE_ADMIN, self.ROLE_HR, self.ROLE_SENIOR_HR)
 
     def is_manager(self):
-        return self.role == self.ROLE_MANAGER
+        return self.role in (self.ROLE_MANAGER, self.ROLE_PROJECT_MANAGER, self.ROLE_GENERAL_MANAGER)
+
+    def is_coo(self):
+        return self.role == self.ROLE_COO
 
     def __str__(self):
         return self.get_full_name() or self.username

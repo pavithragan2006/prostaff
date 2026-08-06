@@ -20,6 +20,7 @@ from attendance.models import AttendanceRecord, MonthlyAttendanceSheet, Overtime
 from projects.models import Project, ProjectAssignment
 from django.urls import reverse
 from core.utils import get_active_branch, get_manager_team
+from leaves.utils import approved_on_leave_today
 
 @login_required
 def punch(request):
@@ -65,6 +66,8 @@ def employee_attendance(request, user_id):
     return render(request, 'attendance/employee_attendance.html', {'emp_user': emp_user, 'records': records})
 
 
+from leaves.utils import approved_on_leave_today
+
 @hr_or_admin_required
 def active_attendance_today(request):
     today = timezone.localdate()
@@ -79,25 +82,32 @@ def active_attendance_today(request):
     records = AttendanceRecord.objects.filter(date=today, user__in=active_users).select_related('user')
     records_by_user = {r.user_id: r for r in records}
 
+    leave_user_ids = {r.user_id for r in approved_on_leave_today(active_branch)}
+
     rows = []
     for u in active_users:
         r = records_by_user.get(u.id)
+        is_present = bool(r and r.in_time)
+        is_on_leave = (u.id in leave_user_ids) and not is_present
         rows.append({
             'user': u,
             'in_time': r.in_time if r else None,
             'out_time': r.out_time if r else None,
             'total_hours': r.total_hours if r else 0,
             'is_late': r.is_late if r else False,
-            'is_present': bool(r and r.in_time),
+            'is_present': is_present,
+            'is_on_leave': is_on_leave,
         })
     rows.sort(key=lambda row: (not row['is_present'], (row['user'].first_name or row['user'].username).lower()))
 
     present_count = sum(1 for row in rows if row['is_present'])
-    absent_count = len(rows) - present_count
+    leave_count = sum(1 for row in rows if row['is_on_leave'])
+    absent_count = len(rows) - present_count - leave_count
 
     return render(request, 'attendance/active_attendance_today.html', {
         'rows': rows, 'today': today,
         'present_count': present_count, 'absent_count': absent_count,
+        'leave_count': leave_count,
         'total_active': len(rows),
     })
 

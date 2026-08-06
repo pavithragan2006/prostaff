@@ -21,15 +21,13 @@ class LeaveRequest(models.Model):
     LEAVE_TYPES = [('CL', 'Casual Leave'), ('EL', 'Earned Leave'), ('SICK', 'Sick Leave')]
 
     STATUS_CHOICES = [
-        ('PENDING_MANAGER', 'Pending Manager Approval'),
-        ('PENDING_HR', 'Pending HR Approval'),
-        ('APPROVED', 'Approved'),
-        ('REJECTED', 'Rejected'),
-        # HR declined an employee's request that a manager had already
-        # approved. It bounces back to that same manager, who must finalize
-        # the rejection themselves before the employee is notified.
-        ('HR_REJECTED_PENDING_MANAGER', 'HR Declined - Awaiting Manager'),
-    ]
+            ('PENDING_MANAGER', 'Pending Manager Approval'),
+            ('PENDING_HR', 'Pending HR Approval'),
+            ('PENDING_COO', 'Pending COO Approval'),
+            ('APPROVED', 'Approved'),
+            ('REJECTED', 'Rejected'),
+            ('HR_REJECTED_PENDING_MANAGER', 'HR Declined - Awaiting Manager'),
+        ]
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='leave_requests')
     request_type = models.CharField(max_length=10, choices=REQUEST_TYPES, default='PERMISSION')
@@ -81,15 +79,26 @@ class LeaveRequest(models.Model):
         the manager stage. Manager's-own and HR's-own requests skip the
         manager stage entirely, so this stays False for them."""
         return self.reviewed_by_manager_id is not None
+    
     def get_manager(self):
-        """The manager who should review this. Only relevant for non-manager
-        employees — manager-level requests always skip straight to HR (see
-        initial_status). Mirrors core.utils.get_manager_team, which is what
-        actually populates a manager's approvals queue — so a manager who
-        can see this request in their queue must also be able to act on it.
-        We do NOT check dept.branch here; only the resolved manager's branch
-        has to match the employee's branch, exactly like get_manager_team's
-        `branch=manager.branch` filter."""
+        """The manager who should review this. A Project Manager assignment
+        takes priority: if this employee is currently on a project led by a
+        Project Manager, their leave/permission requests go straight to that
+        PM. Otherwise falls back to the department manager or direct manager
+        link, same as before. Manager-level requests always skip straight to
+        HR (see initial_status), so this only matters for Employees."""
+        from projects.models import ProjectAssignment
+
+        assignment = ProjectAssignment.objects.filter(
+            user=self.user, is_current=True,
+            project__manager__role='PROJECT_MANAGER',
+            project__status__in=['APPROVED', 'COMPLETED'],
+        ).select_related('project__manager').order_by('-project__start_date').first()
+
+        if assignment and assignment.project.manager and assignment.project.manager_id != self.user_id \
+                and assignment.project.manager.branch_id == self.user.branch_id:
+            return assignment.project.manager
+
         dept = self.user.department
         candidate = None
         if dept and dept.manager_id and dept.manager_id != self.user_id:
@@ -102,10 +111,12 @@ class LeaveRequest(models.Model):
         return None
     
     def initial_status(self):
-       
-         if self.user.role in ('MANAGER', 'HR'):
-            return 'PENDING_HR'
-         return 'PENDING_MANAGER'
+        if self.user.role == 'COO':
+            return 'APPROVED'  # nobody above the COO to review
+        if self.user.role in ('GENERAL_MANAGER', 'PROJECT_MANAGER', 'MANAGER', 'HR', 'ADMIN'):
+            return 'PENDING_COO'
+        return 'PENDING_MANAGER'
+
 
     def get_request_type_display_full(self):
                 return self.get_request_type_display()

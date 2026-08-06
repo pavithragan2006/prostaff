@@ -54,19 +54,40 @@ def project_list(request):
 @login_required
 def create_project(request):
     """Only Managers can create/publish projects. HR, Admin and Employees
-    cannot — Admin gets view-only access to projects and their updates."""
+    cannot — Admin gets view-only access to projects and their updates.
+    A General Manager additionally picks which Project Manager owns the
+    project before choosing the Project Leader."""
     if not request.user.is_manager():
         messages.error(request, "Only Managers can create projects.")
         return redirect('projects:list')
+
+    is_general_manager = request.user.role == User.ROLE_GENERAL_MANAGER
+    project_managers = User.objects.none()
+    if is_general_manager:
+        project_managers = User.objects.filter(
+            role=User.ROLE_PROJECT_MANAGER, branch=request.user.branch
+        ).order_by('first_name', 'username')
 
     if request.method == 'POST':
         name = request.POST.get('name')
         employee_ids = request.POST.getlist('employees')
         lead_id = request.POST.get('lead')
+        project_manager_id = request.POST.get('project_manager')
 
         if not name:
             messages.error(request, 'Project name is required.')
             return redirect('projects:create')
+
+        # A General Manager must assign a Project Manager before anything
+        # else — the Project Leader can only be chosen after that.
+        assigned_manager = request.user
+        if is_general_manager:
+            valid_pm_ids = set(str(uid) for uid in project_managers.values_list('id', flat=True))
+            if not project_manager_id or project_manager_id not in valid_pm_ids:
+                messages.error(request, 'Select a Project Manager for this project.')
+                return redirect('projects:create')
+            assigned_manager = User.objects.get(id=project_manager_id)
+
         if not employee_ids:
             messages.error(request, 'Select at least one employee to assign to this project.')
             return redirect('projects:create')
@@ -96,7 +117,7 @@ def create_project(request):
             start_date=request.POST.get('start_date') or None,
             end_date=request.POST.get('end_date') or None,
             created_by=request.user,
-            manager=request.user,
+            manager=assigned_manager,
             lead_id=lead_id,
             status='APPROVED',
             reviewed_by=request.user,
@@ -121,8 +142,12 @@ def create_project(request):
         }
         for emp in employees
     ]
-    return render(request, 'projects/create.html', {'departments': departments, 'employees_json': employees_data})
-
+    return render(request, 'projects/create.html', {
+        'departments': departments,
+        'employees_json': employees_data,
+        'is_general_manager': is_general_manager,
+        'project_managers': project_managers,
+    })
 
 @hr_or_admin_required
 def project_approvals(request):
@@ -161,22 +186,21 @@ def project_detail(request, project_id):
 
     is_assigned = assignments.filter(user_id=request.user.id).exists()
     is_lead = project.lead_id == request.user.id
+    is_project_manager = project.manager_id == request.user.id
     can_view = (
         request.user.is_hr_or_admin() or
         project.created_by_id == request.user.id or
+        is_project_manager or
         is_assigned
     )
     if not can_view:
         messages.error(request, "You do not have access to this project.")
         return redirect('projects:list')
-
-    # Only the Manager who created the project can add/edit team assignments.
-    is_creator_manager = project.created_by_id == request.user.id
-    can_edit_team = is_creator_manager
-
     # Project-level management (edit name/description/dates, delete the
     # project outright): HR, Admin, or any Manager can do this. Employees
     # can never manage a project.
+    can_edit_team = _can_manage_project(request.user)
+    is_creator_manager = project.created_by_id == request.user.id
     can_manage_project = _can_manage_project(request.user)
 
     # Marking a project as successfully completed is a Manager action,

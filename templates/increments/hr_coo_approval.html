@@ -1,0 +1,53 @@
+{% extends 'core/base.html' %}
+{% block content %}
+<div class="page-header"><h1>COO Approval</h1></div>
+
+<div class="card">
+  <h3 style="margin-top:0;">Send a Report for COO Approval</h3>
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <label>Link to Employee (optional)</label>
+    <select name="employee_id" class="form-control">
+      <option value="">--</option>
+      {% for r in eligible_requests %}
+      <option value="{{ r.user.id }}">
+        {{ r.user.get_full_name|default:r.user.username }} ({{ r.user.employee_id|default:"-" }})
+      </option>
+      {% endfor %}
+    </select>
+
+    <label style="margin-top:14px;">Upload Report File</label>
+    <input type="file" name="report_file" class="form-control" required>
+
+    <label style="margin-top:14px;">Notes for COO (optional)</label>
+    <input type="text" name="notes" class="form-control">
+
+    <button type="submit" class="btn btn-primary" style="margin-top:10px;">Send to COO</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0;">Approval Status</h3>
+  <table>
+    <tr><th>Employee</th><th>Emp ID</th><th>Sent On</th><th>Suggested %</th><th>Status</th><th>COO Decision</th></tr>
+    {% for r in sent %}
+    <tr>
+      <td>{{ r.user.get_full_name|default:r.user.username }}</td>
+      <td>{{ r.user.employee_id|default:"-" }}</td>
+      <td>{{ r.forwarded_at|date:"d M Y" }}</td>
+      <td>{{ r.feedback.suggested_percent|default:"-" }}%</td>
+      <td>
+        {% if r.status == 'PENDING_COO' %}<span class="badge badge-warning">Pending</span>
+        {% elif r.status == 'COO_DECIDED' %}<span class="badge badge-success">Approved</span>
+        {% elif r.status == 'APPLIED' %}<span class="badge badge-success">Approved — Salary Updated</span>
+        {% elif r.status == 'REJECTED' %}<span class="badge badge-danger">Rejected</span>{% endif %}
+      </td>
+      <td>
+        {% if r.coo_percent %}{{ r.coo_percent }}%{% else %}-{% endif %}
+        {% if r.coo_comment %}<br><span style="font-size:0.78rem; color:var(--grey-500);">"{{ r.coo_comment|truncatewords:10 }}"</span>{% endif %}
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="6" class="empty-state">No reports have been sent yet.</td></tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}

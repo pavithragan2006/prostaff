@@ -1,17 +1,24 @@
 {% extends 'core/base.html' %}
 {% block content %}
-<div class="page-header"><h1>Feedback for {{ increment.user.get_full_name|default:increment.user.username }}</h1></div>
+<div class="page-header"><h1>Submit Report for {{ increment.user.get_full_name|default:increment.user.username }}</h1></div>
 <div class="card">
-  <p style="color:var(--grey-700);">HR is considering an increment for this employee. Your feedback is only visible to HR.</p>
+  <p style="color:var(--grey-700);">HR is considering an increment for this employee. Upload your written performance report (Word/Excel/PDF) along with your suggested percentage. This is only visible to HR.</p>
   {% if form.errors %}
   <ul class="messages"><li class="error">Please fix the highlighted fields below.</li></ul>
   {% endif %}
-  <form method="post">
+  <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
-    <label>Your Suggestion</label>
-    {{ form.suggestion }}
-    <label style="margin-top:14px;">Why do you think so?</label>
+    <label>Upload Performance Report</label>
+    {{ form.report_file }}
+    {% if form.report_file.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ form.report_file.errors.0 }}</p>{% endif %}
+
+    <label style="margin-top:14px;">Suggested Increment (%)</label>
+    {{ form.suggested_percent }}
+    {% if form.suggested_percent.errors %}<p style="color:#E4483A; font-size:0.8rem; margin:-10px 0 10px;">{{ form.suggested_percent.errors.0 }}</p>{% endif %}
+
+    <label style="margin-top:14px;">Additional Comments</label>
     {{ form.description }}
+
     <button type="submit" class="btn btn-primary" style="margin-top:10px;">Submit Feedback</button>
     <a href="{% url 'increments:manager_feedback_list' %}" class="btn btn-outline" style="margin-top:10px;">Cancel</a>
   </form>

@@ -1,7 +1,7 @@
 {% extends 'core/base.html' %}
 {% load form_extras %}
 {% block content %}
-<div class="page-header"><h1>Onboard HR / Admin</h1></div>
+<div class="page-header"><h1>Onboard</h1></div>
 <div class="card">
   {% if form.errors %}
   <ul class="messages"><li class="error">Please fix the highlighted fields below.</li></ul>
@@ -145,11 +145,11 @@
   }
 
   function updateRoleMode() {
-    var role = roleSelect.value;
-    var needsSingle = (role === 'EMPLOYEE');
-    singleWrap.style.display = needsSingle ? '' : 'none';
-    multiWrap.style.display = needsSingle ? 'none' : '';
-    updateDeptFilterForCurrentMode();
+  var role = roleSelect.value;
+  var needsSingle = (role === 'EMPLOYEE' || role === 'MANAGER');
+  singleWrap.style.display = needsSingle ? '' : 'none';
+  multiWrap.style.display = needsSingle ? 'none' : '';
+  updateDeptFilterForCurrentMode();
   }
 
   roleSelect.addEventListener('change', updateRoleMode);

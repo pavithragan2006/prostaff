@@ -3,53 +3,74 @@ from django.conf import settings
 
 
 class IncrementRequest(models.Model):
-    STATUS_CHOICES = [('PENDING', 'Pending'), ('APPROVED', 'Approved'), ('REJECTED', 'Rejected')]
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('PENDING_REPORT', 'Report Requested from Manager'),
+        ('REPORT_SUBMITTED', 'Report Submitted — Pending HR Review'),
+        ('PENDING_COO', 'Forwarded to COO for Decision'),
+        ('COO_DECIDED', 'COO Gave Percentage — Pending Salary Update'),
+        ('APPLIED', 'Salary Updated'),
+        ('REJECTED', 'Rejected'),
+    ]
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='increment_requests')
     current_basic = models.DecimalField(max_digits=10, decimal_places=2)
-    requested_basic = models.DecimalField(max_digits=10, decimal_places=2)
-    effective_date = models.DateField()
+    requested_basic = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    effective_date = models.DateField(null=True, blank=True)
     reason = models.TextField(blank=True)
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='increments_requested')
     approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='increments_approved')
     created_at = models.DateTimeField(auto_now_add=True)
 
-    # The manager HR explicitly picked to give feedback on this increment.
-    # Only set (and only required) when the employee's role is EMPLOYEE.
-    # Managers and Admins skip feedback entirely — this stays null for them.
     feedback_manager = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
         related_name='increments_feedback_requested'
     )
+    manager_rejection_reason = models.TextField(blank=True)
+
+    # ---- Step 1: HR requests a report ----
+    report_requested_at = models.DateTimeField(null=True, blank=True)
+
+    # ---- Step 2: Manager writes and submits the report ----
+    performance_report = models.TextField(blank=True, help_text="Manager's written performance report.")
+    report_submitted_at = models.DateTimeField(null=True, blank=True)
+
+    # ---- Step 3: HR reviews and forwards to CEO ----
+    hr_notes = models.TextField(blank=True, help_text="HR's notes/analysis sent along to the CEO.")
+    forwarded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='increments_forwarded')
+    forwarded_at = models.DateTimeField(null=True, blank=True)
+
+    # ---- Step 4: COO analyzes and decides the percentage ----
+    coo_decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='increments_coo_decided')
+    coo_decided_at = models.DateTimeField(null=True, blank=True)
+    coo_percent = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    coo_comment = models.TextField(blank=True)
+    coo_rejection_reason = models.TextField(blank=True)
+
+    # ---- Step 5: HR applies the percentage to the employee's salary ----
+    applied_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='increments_applied')
+    applied_at = models.DateTimeField(null=True, blank=True)
 
     @property
     def increment_percent(self):
-        if self.current_basic:
+        if self.current_basic and self.requested_basic:
             return round(((self.requested_basic - self.current_basic) / self.current_basic) * 100, 2)
-        return 0
+        return self.coo_percent or 0
 
     @property
     def needs_feedback(self):
-        """Only rank-and-file Employees go through manager feedback.
-        Increments for Managers or Admins never need it."""
-        return self.user.role == 'EMPLOYEE'
+        return self.user.role == 'EMPLOYEE' and self.status == 'PENDING'
 
     @property
     def can_be_decided(self):
-        """HR can only see Approve/Reject once feedback isn't required at
-        all, or once the assigned manager has actually submitted it."""
-        if not self.needs_feedback:
-            return True
-        return hasattr(self, 'feedback') and self.feedback is not None
+        return not self.needs_feedback
 
     def __str__(self):
         return f"Increment for {self.user} ({self.status})"
 
 
 class IncrementFeedback(models.Model):
-    """Feedback the assigned manager gives about an increment under
-    consideration. Visible to HR only — never to Admin."""
     SUGGEST = 'SUGGEST'
     NEUTRAL = 'NEUTRAL'
     NOT_SUGGEST = 'NOT_SUGGEST'
@@ -61,19 +82,18 @@ class IncrementFeedback(models.Model):
 
     increment_request = models.OneToOneField(IncrementRequest, on_delete=models.CASCADE, related_name='feedback')
     manager = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='increment_feedbacks_given')
-    suggestion = models.CharField(max_length=15, choices=SUGGESTION_CHOICES)
+    # Kept for backward compatibility, no longer required/shown on the form.
+    suggestion = models.CharField(max_length=15, choices=SUGGESTION_CHOICES, blank=True)
+    suggested_percent = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True, help_text="Manager's suggested increment percentage.")
+    report_file = models.FileField(upload_to='increment_reports/', null=True, blank=True, help_text="Performance report (docx/xlsx/pdf) uploaded by the manager.")
     description = models.TextField(blank=True, help_text="Why do you think so?")
     submitted_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"Feedback on {self.increment_request} by {self.manager}"
-
+    
 class IncrementCycleSkip(models.Model):
-    """When HR clicks "Cancel" on a Due for Annual Increment card, this
-    records that decision so the reminder doesn't keep resurfacing for the
-    same anniversary. It reappears naturally once that employee actually
-    gets an increment (their anniversary date shifts forward)."""
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='increment_skips')
     anniversary_date = models.DateField()
     skipped_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='increment_skips_made')
@@ -84,3 +104,24 @@ class IncrementCycleSkip(models.Model):
 
     def __str__(self):
         return f"Skipped increment reminder - {self.user} ({self.anniversary_date})"
+    
+class CooReport(models.Model):
+    """A report HR sends up to the COO — optionally tied to a specific
+    employee's increment, or just a general report."""
+    employee = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='coo_reports'
+    )
+    report_file = models.FileField(upload_to='coo_reports/')
+    notes = models.CharField(max_length=255, blank=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
+        related_name='coo_reports_uploaded'
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-uploaded_at']
+
+    def __str__(self):
+        return f"COO Report - {self.employee or 'General'} ({self.uploaded_at.date()})"
