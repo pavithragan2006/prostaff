@@ -57,7 +57,7 @@ def download_payslip(request, payslip_id):
     if is_owner and not is_hr_or_admin and not payslip.is_released:
         messages.error(request, "This payslip hasn't been released yet.")
         return redirect('payroll:my_payslips')
-
+    
     # The DB can have a pdf_file name recorded even if the actual file is
     # missing from disk (moved media folder, manual deletion, failed write,
     # etc). Check real existence, not just whether the field is set.
@@ -66,7 +66,7 @@ def download_payslip(request, payslip_id):
         payslip.refresh_from_db()
 
     return FileResponse(payslip.pdf_file.open('rb'), as_attachment=True, filename=payslip.pdf_file.name)
-
+   
 
 @hr_or_admin_required
 def payroll_runs(request):

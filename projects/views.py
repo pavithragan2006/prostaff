@@ -29,10 +29,15 @@ def project_list(request):
                 Q(assignments__user__branch=active_branch)
             ).distinct()
     else:
+        # Includes created_by so a General Manager who published a project
+        # (and assigned a different Project Manager to run it) still sees
+        # it here — previously only assignments/lead/manager were checked,
+        # which excluded the GM entirely once a PM was assigned as manager.
         projects = Project.objects.filter(status__in=['APPROVED', 'COMPLETED']).filter(
             Q(assignments__user=request.user) |
             Q(lead=request.user) |
-            Q(manager=request.user)
+            Q(manager=request.user) |
+            Q(created_by=request.user)
         ).distinct().prefetch_related('assignments__user')
 
     completed_projects, active_projects, upcoming_projects = [], [], []
@@ -49,7 +54,6 @@ def project_list(request):
         'active_projects': active_projects,
         'upcoming_projects': upcoming_projects,
     })
-
 
 @login_required
 def create_project(request):

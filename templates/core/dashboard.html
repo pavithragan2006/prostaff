@@ -23,8 +23,6 @@
 
     {% if user.role == 'HR' %}
     <a href="{% url 'attendance:active_attendance_today' %}" class="btn btn-accent">Go to Attendance</a>
-    {% elif user.role == 'ADMIN' %}
-    <a href="{% url 'attendance:punch' %}" class="btn btn-accent">Go to Attendance</a>
     {% else %}
     <a href="{% url 'attendance:punch' %}" class="btn btn-accent">Go to Attendance</a>
     {% endif %}
@@ -70,11 +68,20 @@
 {% else %}
 <div class="stat-grid">
   <div class="stat-card"><div class="stat-value">{{ month_attendance }}</div><div class="stat-label">Days Present This Month</div></div>
+
+  {% if user.role == 'GENERAL_MANAGER' %}
+    <!-- GM: no Pending Leave Requests card, no Team Members card -->
+  {% elif user.role == 'PROJECT_MANAGER' %}
   <div class="stat-card orange"><div class="stat-value">{{ my_pending_leaves }}</div><div class="stat-label">My Pending Leave Requests</div></div>
-  {% if user.is_manager %}
+  <div class="stat-card"><div class="stat-value">{{ pm_project_count }}</div><div class="stat-label">Projects Currently Handling</div></div>
+  {% else %}
+  <div class="stat-card orange"><div class="stat-value">{{ my_pending_leaves }}</div><div class="stat-label">My Pending Leave Requests</div></div>
+  {% if user.role == 'MANAGER' %}
   <div class="stat-card"><div class="stat-value">{{ team_size }}</div><div class="stat-label">Team Members</div></div>
   {% endif %}
+  {% endif %}
 </div>
+
 <div class="card">
   <h3>Today</h3>
   {% if today_record and today_record.in_time %}

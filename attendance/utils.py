@@ -410,7 +410,7 @@ def generate_team_monthly_excel(summaries, year, month):
         col += 1
 
         for day in summary['daily_rows']:
-            val = float(day['hours']) if day['hours'] else 0
+            val = 1 if day['attended'] else 0
             c = ws.cell(row=row, column=col, value=val)
             c.alignment = center
             c.border = border
