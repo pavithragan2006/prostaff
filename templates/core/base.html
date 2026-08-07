@@ -174,79 +174,89 @@
             Reports
           </a>
 
-        {% else %}
-          <a class="sidebar-link" href="{% url 'employees:my_profile' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>
-            My Profile
-          </a>
-          <a class="sidebar-link" href="{% url 'attendance:punch' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
-            Attendance
-          </a>
-          <a class="sidebar-link" href="{% url 'attendance:my_overtime_permissions' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></svg>
-            My Overtime / Sunday Permissions
-          </a>
-          <a class="sidebar-link" href="{% url 'attendance:my_attendance_view' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg>
-            Monthly Attendance
-          </a>
-          <a class="sidebar-link" href="{% url 'leaves:my_leaves' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 3v4M16 3v4"/></svg>
-            Permission / Leave
-            {% if my_leave_count %}<span class="sidebar-badge">{{ my_leave_count }}</span>{% endif %}
-          </a>
-          <a class="sidebar-link" href="{% url 'payroll:my_payslips' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
-            Payslips
-          </a>
-          <a class="sidebar-link" href="{% url 'projects:list' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            Projects
-          </a>
-          <a class="sidebar-link" href="{% url 'queries:my_queries' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            Ask a Query
-          </a>
-                    
-          {% if has_applied_resignation %}
-            <a class="sidebar-link" href="{% url 'employees:my_resignation' %}">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
-              My Resignation
-            </a>
-            {% endif %}
+      {% else %}
+        <a class="sidebar-link" href="{% url 'employees:my_profile' %}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>
+          My Profile
+        </a>
 
-          {% if user.is_manager %}
-          <div class="sidebar-section">Manager</div>
-          <a class="sidebar-link" href="{% url 'employees:my_department' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.5 3-5.5 6-5.5s6 2 6 5.5"/><path d="M14 20c.3-2.5 2-4 4.5-4"/></svg>
-            Department Staff
+        <a class="sidebar-link" href="{% url 'attendance:punch' %}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+          Attendance
+        </a>
+
+        {% if user.role != 'PROJECT_MANAGER' and user.role != 'GENERAL_MANAGER' %}
+        <a class="sidebar-link" href="{% url 'attendance:my_overtime_permissions' %}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></svg>
+          My Overtime / Sunday Permissions
+        </a>
+        {% endif %}
+
+        <a class="sidebar-link" href="{% url 'attendance:my_attendance_view' %}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg>
+          Monthly Attendance
+        </a>
+
+        <a class="sidebar-link" href="{% url 'leaves:my_leaves' %}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 3v4M16 3v4"/></svg>
+          Permission / Leave
+          {% if my_leave_count %}<span class="sidebar-badge">{{ my_leave_count }}</span>{% endif %}
+        </a>
+        <a class="sidebar-link" href="{% url 'payroll:my_payslips' %}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+          Payslips
+        </a>
+        <a class="sidebar-link" href="{% url 'projects:list' %}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          Projects
+        </a>
+        <a class="sidebar-link" href="{% url 'queries:my_queries' %}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Ask a Query
+        </a>
+
+        {% if has_applied_resignation %}
+          <a class="sidebar-link" href="{% url 'employees:my_resignation' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+            My Resignation
           </a>
-          <a class="sidebar-link" href="{% url 'attendance:overtime_permissions' %}">
+        {% endif %}
+
+        {% if user.role == 'MANAGER' or user.role == 'PROJECT_MANAGER' %}
+        <div class="sidebar-section">Manager</div>
+
+        {% if user.role == 'MANAGER' %}
+        <a class="sidebar-link" href="{% url 'employees:my_department' %}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.5 3-5.5 6-5.5s6 2 6 5.5"/><path d="M14 20c.3-2.5 2-4 4.5-4"/></svg>
+          Department Staff
+        </a>
+        <a class="sidebar-link" href="{% url 'attendance:overtime_permissions' %}">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></svg>
           Overtime / Sunday Permissions
-         </a>
-          <a class="sidebar-link" href="{% url 'attendance:my_attendance_view' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg>
-            Monthly Attendance
-          </a>
-          <a class="sidebar-link" href="{% url 'leaves:approvals' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-5"/></svg>
-            Leave Approvals
-            {% if leave_approval_count %}<span class="sidebar-badge">{{ leave_approval_count }}</span>{% endif %}
-          </a>
-          <a class="sidebar-link" href="{% url 'increments:manager_feedback_list' %}">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-              Increment Feedback
-          </a>
-        
+        </a>
+        <a class="sidebar-link" href="{% url 'attendance:my_attendance_view' %}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg>
+          Monthly Attendance
+        </a>
+        {% endif %}
+
+        <a class="sidebar-link" href="{% url 'leaves:approvals' %}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-5"/></svg>
+          Leave Approvals
+          {% if leave_approval_count %}<span class="sidebar-badge">{{ leave_approval_count }}</span>{% endif %}
+        </a>
+        <a class="sidebar-link" href="{% url 'increments:manager_feedback_list' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            Increment Feedback
+        </a>
+
         <a class="sidebar-link" href="{% url 'queries:manager_queries' %}">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           Team Queries
         </a>
-          {% endif %}
         {% endif %}
-      </nav>
+      {% endif %}
+    </nav>
 
       <div class="sidebar-footer">
         <div class="sidebar-user">

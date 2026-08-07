@@ -113,14 +113,17 @@ class LeaveRequest(models.Model):
     def initial_status(self):
         if self.user.role == 'COO':
             return 'APPROVED'  # nobody above the COO to review
-        if self.user.role in ('GENERAL_MANAGER', 'PROJECT_MANAGER', 'MANAGER', 'HR', 'ADMIN'):
+        if self.user.role == 'PROJECT_MANAGER':
+            # PMs report up through HR for their own leave, not the COO.
+            return 'PENDING_HR'
+        if self.user.role in ('GENERAL_MANAGER', 'MANAGER', 'HR', 'ADMIN'):
             return 'PENDING_COO'
         return 'PENDING_MANAGER'
 
 
     def get_request_type_display_full(self):
                 return self.get_request_type_display()
-
+        
     def __str__(self):
                 return f"{self.user} - {self.get_request_type_display()} ({self.status})"
 

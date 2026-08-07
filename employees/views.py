@@ -35,8 +35,10 @@ def _present_user_ids_today():
 def _can_apply_resignation(user):
     # HR can resign too — but their resignation is reviewed by Admin, not
     # by another HR colleague. Admin itself never applies for resignation.
-    return user.role in ('EMPLOYEE', 'MANAGER', 'HR', 'ADMIN')
-
+    # PM and GM are included here too — previously missing, which meant
+    # neither Edit Profile nor Apply for Resignation ever showed on their
+    # My Profile page.
+    return user.role in ('EMPLOYEE', 'MANAGER', 'PROJECT_MANAGER', 'GENERAL_MANAGER', 'HR', 'ADMIN')
 
 def _can_review_resignation(acting_user, resignation):
     """HR reviews resignations from Employees/Managers. Admin reviews
@@ -732,7 +734,7 @@ def my_resignation(request):
     })
 
 
-@admin_only_required
+@hr_or_admin_required
 def onboard_hr(request):
     """FIXED: the role-dispatch block used to be indented at the same
     level as `if form.is_valid():` instead of inside it — meaning it ran
@@ -740,7 +742,12 @@ def onboard_hr(request):
     The Employee/Manager branch was also missing a `return redirect(...)`,
     which meant a successful onboard of an Employee/Manager here would
     fall through and implicitly return None, crashing with
-    'view didn't return an HttpResponse'. Both are fixed below."""
+    'view didn't return an HttpResponse'. Both are fixed below.
+
+    HR can now also reach this view to onboard another HR, assigning
+    branch access herself — independent of Admin. OnboardHRForm restricts
+    an HR actor to only the HR role and to branches she herself can
+    access."""
     if request.method == 'POST':
         form = OnboardHRForm(request.POST, acting_user=request.user)
         if form.is_valid():
@@ -791,7 +798,7 @@ def onboard_hr(request):
                 if role == User.ROLE_HR:
                     messages.success(
                         request,
-                        f'{user} onboarded as HR successfully (Employee ID {user.employee_id}, Enrollment ID {profile.enrollment_id}).'
+                        f'{user} onboarded as HR successfully (Employee ID {user.employee_id}, Enrollment ID {profile.enrollment_id}). Branch access: {", ".join(b.name for b in accessible)}.'
                     )
                 elif role == User.ROLE_COO:
                     messages.success(request, f'{user} onboarded as COO successfully.')
@@ -804,7 +811,6 @@ def onboard_hr(request):
         form = OnboardHRForm(acting_user=request.user)
 
     return render(request, 'employees/onboard_hr.html', {'form': form})
-
 
 @login_required
 def complete_onboarding(request, user_id):

@@ -408,8 +408,6 @@ class OnboardHRForm(forms.ModelForm):
     phone_country_code = forms.ChoiceField(choices=COUNTRY_CODES, required=False, widget=forms.Select(attrs=COUNTRY_CODE_ATTRS))
     phone = forms.CharField(max_length=10, required=False, validators=[phone_validator], widget=forms.TextInput(attrs=PHONE_ATTRS))
 
-    # Employee added alongside Admin/HR — same page now handles all three,
-    # each with its own branch-assignment mode below.
     role = forms.ChoiceField(
         choices=[
             (User.ROLE_EMPLOYEE, 'Employee'),
@@ -427,9 +425,7 @@ class OnboardHRForm(forms.ModelForm):
         widget=forms.Select(attrs={'class': 'form-control'})
     )
     branch = forms.ModelChoiceField(queryset=Branch.objects.none(), required=False)
-    
 
-    # Multi-branch field — only used/required when role == HR or ADMIN.
     accessible_branches = forms.ModelMultipleChoiceField(
         queryset=Branch.objects.all().order_by('code'),
         required=False,
@@ -446,14 +442,16 @@ class OnboardHRForm(forms.ModelForm):
             'date_joined_company': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
         }
 
- 
-
     def __init__(self, *args, **kwargs):
         acting_user = kwargs.pop('acting_user', None)
         super().__init__(*args, **kwargs)
 
-
         if acting_user and acting_user.role == 'HR':
+            # An HR user onboarding another HR can only create HR
+            # accounts — Admin/COO/Manager/Employee creation stays out of
+            # this path for an HR actor.
+            self.fields['role'].choices = [(User.ROLE_HR, 'HR')]
+
             allowed_branches = acting_user.accessible_branches.all()
             if not allowed_branches.exists() and acting_user.branch_id:
                 allowed_branches = Branch.objects.filter(id=acting_user.branch_id)
@@ -462,9 +460,18 @@ class OnboardHRForm(forms.ModelForm):
             self.fields['department'].queryset = Department.objects.filter(
                 branch__in=allowed_branches
             ).select_related('branch').order_by('branch__code', 'name')
+
+            # An HR actor can only grant branch access to branches she
+            # herself can access — she can't hand out access she doesn't
+            # have. Admin is not involved in this decision at all.
+            if acting_user.can_access_all_branches:
+                self.fields['accessible_branches'].queryset = Branch.objects.all().order_by('code')
+            else:
+                self.fields['accessible_branches'].queryset = allowed_branches.order_by('code')
         else:
             self.fields['branch'].queryset = Branch.objects.all().order_by('code')
             self.fields['department'].queryset = Department.objects.all().select_related('branch').order_by('branch__code', 'name')
+            self.fields['accessible_branches'].queryset = Branch.objects.all().order_by('code')
 
         for field in self.fields.values():
             field.widget.attrs.setdefault('class', 'form-control')

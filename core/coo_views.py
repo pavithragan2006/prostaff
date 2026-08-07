@@ -66,9 +66,12 @@ def coo_dashboard(request):
         context['leaders'] = leaders
 
     elif tab == 'leave_approval':
+        # PM's own leave now goes to HR, not the COO — so PMs are excluded
+        # from the COO's leave history here, even though they still appear
+        # in COO_DIRECTORY_ROLES for the Directory tab.
         coo_reviewable_users = User.objects.filter(
             role__in=COO_DIRECTORY_ROLES, branch=coo_branch
-        )
+        ).exclude(role='PROJECT_MANAGER')
 
         context['requests'] = LeaveRequest.objects.filter(
             status='PENDING_COO', user__branch=coo_branch
@@ -77,11 +80,8 @@ def coo_dashboard(request):
         history_qs = LeaveRequest.objects.filter(
             user__in=coo_reviewable_users
         ).exclude(status='PENDING_COO').select_related('user').order_by('-applied_at')
-        # Once the request's own date (or end date, for multi-day leave) has
-        # passed, drop it from history automatically.
         today = timezone.localdate()
         context['history'] = not_expired_leaves(history_qs, today)[:100]
-
     elif tab == 'increment_approval':
         context['pending_coo'] = IncrementRequest.objects.filter(
             status='PENDING_COO'
