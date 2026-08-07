@@ -49,7 +49,7 @@
     {% endif %}
     {% if r.reviewed_by_hr %}
     <p style="margin:0 0 6px; font-size:0.85rem; color:var(--grey-700);">
-      Reviewed by HR: <strong>{{ r.reviewed_by_hr }}</strong>{% if r.hr_reviewed_at %} on {{ r.hr_reviewed_at|date:"d M Y, h:i A" }}{% endif %}
+      Reviewed by {% if r.reviewed_by_hr.role == 'COO' %}COO{% else %}HR{% endif %}: <strong>{{ r.reviewed_by_hr }}</strong>{% if r.hr_reviewed_at %} on {{ r.hr_reviewed_at|date:"d M Y, h:i A" }}{% endif %}
     </p>
     {% endif %}
 
@@ -73,7 +73,6 @@
     <tr>
       <th>Employee Name</th><th>Employee ID</th><th>Department</th>
       <th>Leave Date(s)</th><th>Leave Type</th><th>Status</th>
-      <th>Approved By</th><th></th>
     </tr>
     {% for r in on_leave_today %}
     <tr>
@@ -88,14 +87,16 @@
         {% endif %}
       </td>
       <td>{{ r.get_request_type_display }}{% if r.request_type == 'LEAVE' %} &middot; {{ r.get_leave_type_display }}{% endif %}</td>
-      <td><span class="badge badge-success">Approved</span></td>
-      <td>{% if r.reviewed_by_manager %}{{ r.reviewed_by_manager.get_full_name|default:r.reviewed_by_manager.username }}{% elif r.reviewed_by_hr %}{{ r.reviewed_by_hr.get_full_name|default:r.reviewed_by_hr.username }} (HR){% else %}-{% endif %}</td>
-      <td style="color:var(--grey-500); font-size:0.8rem;">
-        Employee is on leave today
-        {% if r.reviewed_by_manager %}(Approved by {{ r.reviewed_by_manager.get_full_name|default:r.reviewed_by_manager.username }}){% elif r.reviewed_by_hr %}(Approved by HR — {{ r.reviewed_by_hr.get_full_name|default:r.reviewed_by_hr.username }}){% endif %}
+      <td>
+        <span class="badge badge-success">Approved</span>
+        <span style="color:var(--grey-500); font-size:0.78rem; display:block; margin-top:2px;">
+          {% if r.reviewed_by_manager %}by {{ r.reviewed_by_manager.get_full_name|default:r.reviewed_by_manager.username }}{% if r.reviewed_by_manager.role == 'PROJECT_MANAGER' %} (PM){% endif %}
+          {% elif r.reviewed_by_hr %}by {{ r.reviewed_by_hr.get_full_name|default:r.reviewed_by_hr.username }}{% if r.reviewed_by_hr.role == 'COO' %} (COO){% else %} (HR){% endif %}
+          {% else %}-{% endif %}
+        </span>
       </td>
     </tr>
-    {% empty %}<tr><td colspan="8" class="empty-state">No employees on leave today.</td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="6" class="empty-state">No employees on leave today.</td></tr>{% endfor %}
   </table>
 </div>
 {% endif %}
@@ -126,14 +127,14 @@
           <span class="badge badge-success">Approved</span>
           <span style="color:var(--grey-500); font-size:0.78rem; display:block; margin-top:2px;">
             {% if r.reviewed_by_manager %}by {{ r.reviewed_by_manager.get_full_name|default:r.reviewed_by_manager.username }}{% if r.reviewed_by_manager.role == 'PROJECT_MANAGER' %} (PM){% endif %}
-            {% elif r.reviewed_by_hr %}by {{ r.reviewed_by_hr.get_full_name|default:r.reviewed_by_hr.username }} (HR)
+            {% elif r.reviewed_by_hr %}by {{ r.reviewed_by_hr.get_full_name|default:r.reviewed_by_hr.username }}{% if r.reviewed_by_hr.role == 'COO' %} (COO){% else %} (HR){% endif %}
             {% else %}-{% endif %}
           </span>
         {% elif r.status == 'REJECTED' %}
           <span class="badge badge-danger">Rejected</span>
           <span style="color:var(--grey-500); font-size:0.78rem; display:block; margin-top:2px;">
             {% if r.reviewed_by_manager %}by {{ r.reviewed_by_manager.get_full_name|default:r.reviewed_by_manager.username }}{% if r.reviewed_by_manager.role == 'PROJECT_MANAGER' %} (PM){% endif %}
-            {% elif r.reviewed_by_hr %}by {{ r.reviewed_by_hr.get_full_name|default:r.reviewed_by_hr.username }} (HR)
+            {% elif r.reviewed_by_hr %}by {{ r.reviewed_by_hr.get_full_name|default:r.reviewed_by_hr.username }}{% if r.reviewed_by_hr.role == 'COO' %} (COO){% else %} (HR){% endif %}
             {% else %}-{% endif %}
           </span>
         {% endif %}
